@@ -18,6 +18,8 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   JWT_EXPIRES_IN: z.string().default('7d'),
 
+  LBBC_API_KEY: z.string().min(1, 'LBBC_API_KEY is required'),
+
   FRONTEND_URL: z.string().min(1, 'FRONTEND_URL is required'),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),

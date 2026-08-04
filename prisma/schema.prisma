@@ -15,14 +15,16 @@ enum Role {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      Role     @default(USER)
-  posts     Post[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   String        @id @default(uuid())
+  email                String        @unique
+  password             String
+  name                 String?
+  role                 Role          @default(USER)
+  posts                Post[]
+  membersAdded         Member[]      @relation("MemberAddedBy")
+  transactionsRecorded Transaction[] @relation("TransactionRecordedBy")
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   @@map("users")
 }
@@ -39,4 +41,92 @@ model Post {
 
   @@index([authorId])
   @@map("posts")
+}
+
+model Status {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  members   Member[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("statuses")
+}
+
+model Group {
+  id        String   @id @default(uuid())
+  role      String
+  members   Member[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("groups")
+}
+
+model Member {
+  id          String   @id @default(uuid())
+  email       String?
+  firstName   String
+  middleName  String?
+  lastName    String
+  contact     String?
+  age         Int?
+  isBaptized  Boolean  @default(false)
+  soulWinner  String?
+  group       Group?   @relation(fields: [groupId], references: [id])
+  groupId     String?
+  status      Status?  @relation(fields: [statusId], references: [id])
+  statusId    String?
+  addedByUser User?    @relation("MemberAddedBy", fields: [addedBy], references: [id])
+  addedBy     String?
+  joinedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([statusId])
+  @@index([groupId])
+  @@map("members")
+}
+
+model TransactionType {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("transaction_types")
+}
+
+model Category {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("categories")
+}
+
+model Transaction {
+  id             String          @id @default(uuid())
+  member         Member?         @relation(fields: [memberId], references: [id])
+  memberId       String?
+  type           TransactionType @relation(fields: [typeId], references: [id])
+  typeId         String
+  category       Category?       @relation(fields: [categoryId], references: [id])
+  categoryId     String?
+  description    String?
+  amount         Decimal         @db.Decimal(12, 2)
+  recordedByUser User?           @relation("TransactionRecordedBy", fields: [recordedBy], references: [id])
+  recordedBy     String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([typeId])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@map("transactions")
 }
