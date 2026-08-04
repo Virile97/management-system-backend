@@ -13,7 +13,7 @@ Express + Prisma + Supabase (PostgreSQL) REST API.
 
 ## Getting started
 
-1. Copy `.env.example` to `.env` and fill in your Supabase project values (`DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, keys, `JWT_SECRET`).
+1. Copy `.env.example` to `.env` and fill in your Supabase project values (`DATABASE_URL`, `SUPABASE_URL`, keys, `JWT_SECRET`).
 2. Install dependencies:
    ```bash
    npm install

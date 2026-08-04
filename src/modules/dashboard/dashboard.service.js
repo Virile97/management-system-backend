@@ -73,6 +73,7 @@ async function getFinanceSummary(range) {
   for (const tx of transactions) {
     const key = `${tx.createdAt.getFullYear()}-${tx.createdAt.getMonth()}`
     const bucket = buckets.get(key)
+
     if (!bucket) continue
 
     const amount = toAmountNumber(tx.amount)
@@ -97,6 +98,7 @@ function memberActivityItem(member) {
 
 function transactionActivityItem(transaction) {
   const isIncome = transaction.type.name === 'Income'
+
   return {
     type: isIncome ? 'INCOME_RECORDED' : 'EXPENSE_RECORDED',
     message: transaction.category?.name
@@ -108,9 +110,11 @@ function transactionActivityItem(transaction) {
 }
 
 async function getRecentActivity(limit) {
+  const lmt = Number(limit) || 0
+
   const [members, transactions] = await Promise.all([
-    dashboardRepository.findRecentMembers(limit),
-    dashboardRepository.findRecentTransactions(limit),
+    dashboardRepository.findRecentMembers(lmt),
+    dashboardRepository.findRecentTransactions(lmt),
   ])
 
   const activity = [
@@ -120,7 +124,7 @@ async function getRecentActivity(limit) {
 
   activity.sort((a, b) => b.timestamp - a.timestamp)
 
-  return activity.slice(0, limit)
+  return activity.slice(0, lmt)
 }
 
 module.exports = {

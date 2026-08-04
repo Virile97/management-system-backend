@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  directUrl = env("DATABASE_URL")
 }
 
 enum Role {
@@ -20,27 +20,12 @@ model User {
   password             String
   name                 String?
   role                 Role          @default(USER)
-  posts                Post[]
   membersAdded         Member[]      @relation("MemberAddedBy")
   transactionsRecorded Transaction[] @relation("TransactionRecordedBy")
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
   @@map("users")
-}
-
-model Post {
-  id        String   @id @default(uuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([authorId])
-  @@map("posts")
 }
 
 model Status {
