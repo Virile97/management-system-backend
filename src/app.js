@@ -11,8 +11,19 @@ const { notFoundHandler, errorHandler } = require('./middlewares/error.middlewar
 
 const app = express()
 
+const allowedOrigins = [env.FRONTEND_URL]
+
 app.use(helmet())
-app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }))
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true)
+      }
+      return callback(new Error('The CORS policy does not allow access from the specified Origin.'))
+    },
+  }),
+)
 app.use(compression())
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))

@@ -18,7 +18,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   JWT_EXPIRES_IN: z.string().default('7d'),
 
-  CORS_ORIGIN: z.string().default('*'),
+  FRONTEND_URL: z.string().min(1, 'FRONTEND_URL is required'),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
