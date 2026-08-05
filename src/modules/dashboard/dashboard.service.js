@@ -101,44 +101,20 @@ async function getFinanceSummary(range) {
   return Array.from(buckets.values()).map(({ key: _key, ...bucket }) => bucket)
 }
 
-function memberActivityItem(member) {
+function toActivityItem(log) {
   return {
-    type: 'MEMBER_REGISTERED',
-    message: 'New member registered',
-    detail: [member.firstName, member.lastName].filter(Boolean).join(' '),
-    timestamp: member.createdAt,
-  }
-}
-
-function transactionActivityItem(transaction) {
-  const isIncome = transaction.type.name === 'Income'
-
-  return {
-    type: isIncome ? 'INCOME_RECORDED' : 'EXPENSE_RECORDED',
-    message: transaction.category?.name
-      ? `${transaction.category.name} recorded`
-      : 'Transaction recorded',
-    detail: toAmountNumber(transaction.amount),
-    timestamp: transaction.createdAt,
+    type: log.action,
+    message: log.message,
+    detail: log.detail,
+    timestamp: log.createdAt,
   }
 }
 
 async function getRecentActivity(limit) {
   const lmt = Number(limit) || 0
+  const logs = await dashboardRepository.findRecentActivityLogs(lmt)
 
-  const [members, transactions] = await Promise.all([
-    dashboardRepository.findRecentMembers(lmt),
-    dashboardRepository.findRecentTransactions(lmt),
-  ])
-
-  const activity = [
-    ...members.map(memberActivityItem),
-    ...transactions.map(transactionActivityItem),
-  ]
-
-  activity.sort((a, b) => b.timestamp - a.timestamp)
-
-  return activity.slice(0, lmt)
+  return logs.map(toActivityItem)
 }
 
 module.exports = {

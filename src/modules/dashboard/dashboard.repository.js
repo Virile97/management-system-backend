@@ -33,25 +33,11 @@ function sumTransactionsGroupedByTypeInRange(from) {
   })
 }
 
-function findRecentMembers(limit) {
-  return prisma.member.findMany({
+function findRecentActivityLogs(limit) {
+  return prisma.activityLog.findMany({
     orderBy: { createdAt: 'desc' },
     take: limit,
-    select: { id: true, firstName: true, lastName: true, createdAt: true },
-  })
-}
-
-function findRecentTransactions(limit) {
-  return prisma.transaction.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    select: {
-      id: true,
-      amount: true,
-      createdAt: true,
-      type: { select: { name: true } },
-      category: { select: { name: true } },
-    },
+    select: { id: true, action: true, message: true, detail: true, createdAt: true },
   })
 }
 
@@ -61,6 +47,5 @@ module.exports = {
   countMembersGroupedByStatus,
   sumTransactionsByTypeName,
   sumTransactionsGroupedByTypeInRange,
-  findRecentMembers,
-  findRecentTransactions,
+  findRecentActivityLogs,
 }

@@ -147,74 +147,56 @@ describe('dashboard.service', () => {
   })
 
   describe('getRecentActivity', () => {
-    it('merges member and transaction activity sorted by most recent first', async () => {
-      vi.spyOn(dashboardRepository, 'findRecentMembers').mockResolvedValue([
+    it('maps activity log rows to display items in the order returned', async () => {
+      vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([
         {
-          id: 'm1',
-          firstName: 'Margaret',
-          lastName: 'Osei',
+          id: 'a1',
+          action: 'MEMBER_REGISTERED',
+          message: 'New member registered',
+          detail: 'Margaret Osei',
           createdAt: new Date('2026-08-04T08:00:00Z'),
         },
-      ])
-      vi.spyOn(dashboardRepository, 'findRecentTransactions').mockResolvedValue([
         {
-          id: 't1',
-          amount: '2400',
+          id: 'a2',
+          action: 'INCOME_RECORDED',
+          message: 'Tithe recorded',
+          detail: '$2,400 received',
           createdAt: new Date('2026-08-04T05:00:00Z'),
-          type: { name: 'Income' },
-          category: { name: 'Tithe' },
         },
       ])
 
       const activity = await dashboardService.getRecentActivity(5)
 
-      expect(activity).toHaveLength(2)
-      expect(activity[0]).toMatchObject({ type: 'MEMBER_REGISTERED', detail: 'Margaret Osei' })
-      expect(activity[1]).toMatchObject({
-        type: 'INCOME_RECORDED',
-        message: 'Tithe recorded',
-        detail: 2400,
-      })
-    })
-
-    it('truncates the merged feed to the requested limit', async () => {
-      const makeMember = (i) => ({
-        id: `m${i}`,
-        firstName: `Member${i}`,
-        lastName: '',
-        createdAt: new Date(2026, 0, i + 1),
-      })
-
-      vi.spyOn(dashboardRepository, 'findRecentMembers').mockResolvedValue([
-        makeMember(1),
-        makeMember(2),
-        makeMember(3),
-      ])
-      vi.spyOn(dashboardRepository, 'findRecentTransactions').mockResolvedValue([])
-
-      const activity = await dashboardService.getRecentActivity(2)
-
-      expect(activity).toHaveLength(2)
-    })
-
-    it('falls back to a generic message when the transaction has no category', async () => {
-      vi.spyOn(dashboardRepository, 'findRecentMembers').mockResolvedValue([])
-      vi.spyOn(dashboardRepository, 'findRecentTransactions').mockResolvedValue([
+      expect(activity).toEqual([
         {
-          id: 't1',
-          amount: '50',
-          createdAt: new Date(),
-          type: { name: 'Expense' },
-          category: null,
+          type: 'MEMBER_REGISTERED',
+          message: 'New member registered',
+          detail: 'Margaret Osei',
+          timestamp: new Date('2026-08-04T08:00:00Z'),
+        },
+        {
+          type: 'INCOME_RECORDED',
+          message: 'Tithe recorded',
+          detail: '$2,400 received',
+          timestamp: new Date('2026-08-04T05:00:00Z'),
         },
       ])
+    })
+
+    it('passes the requested limit through to the repository', async () => {
+      vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([])
+
+      await dashboardService.getRecentActivity(5)
+
+      expect(dashboardRepository.findRecentActivityLogs).toHaveBeenCalledWith(5)
+    })
+
+    it('returns an empty array when there is no activity yet', async () => {
+      vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([])
 
       const activity = await dashboardService.getRecentActivity(5)
 
-      expect(activity[0]).toMatchObject({
-        type: 'EXPENSE_RECORDED',
-        message: 'Transaction recorded',
-      })
+      expect(activity).toEqual([])
     })
   })
 })

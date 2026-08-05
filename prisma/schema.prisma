@@ -22,10 +22,33 @@ model User {
   role                 Role          @default(USER)
   membersAdded         Member[]      @relation("MemberAddedBy")
   transactionsRecorded Transaction[] @relation("TransactionRecordedBy")
+  activityLogs         ActivityLog[]
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
   @@map("users")
+}
+
+enum ActivityAction {
+  MEMBER_REGISTERED
+  MEMBER_STATUS_CHANGED
+  MEMBER_UPDATED
+  INCOME_RECORDED
+  EXPENSE_RECORDED
+}
+
+model ActivityLog {
+  id        String         @id @default(uuid())
+  action    ActivityAction
+  message   String
+  detail    String?
+  metadata  Json?
+  actor     User?          @relation(fields: [actorId], references: [id])
+  actorId   String?
+  createdAt DateTime       @default(now())
+
+  @@index([createdAt])
+  @@map("activity_logs")
 }
 
 model Status {
