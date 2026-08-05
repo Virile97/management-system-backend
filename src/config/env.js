@@ -9,7 +9,6 @@ const envSchema = z.object({
   API_PREFIX: z.string().default('/api/v1'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  DIRECT_URL: z.string().optional(),
 
   SUPABASE_URL: z.string().min(1, 'SUPABASE_URL is required'),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
@@ -18,7 +17,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   JWT_EXPIRES_IN: z.string().default('7d'),
 
-  LBBC_API_KEY: z.string().min(1, 'LBBC_API_KEY is required'),
+  APP_API_KEY: z.string().min(1, 'APP_API_KEY is required'),
 
   FRONTEND_URL: z.string().min(1, 'FRONTEND_URL is required'),
 

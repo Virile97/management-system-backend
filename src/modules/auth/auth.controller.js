@@ -1,5 +1,10 @@
 const authService = require('./auth.service')
 const { asyncHandler, ApiResponse } = require('../../shared/utils')
+const { publicKey } = require('../../shared/utils/rsa-keys')
+
+const getPublicKey = asyncHandler(async (req, res) => {
+  return ApiResponse.success(res, { publicKey }, 'Public key retrieved')
+})
 
 const register = asyncHandler(async (req, res) => {
   const result = await authService.register(req.body)
@@ -15,4 +20,4 @@ const me = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, req.user, 'Current user retrieved')
 })
 
-module.exports = { register, login, me }
+module.exports = { getPublicKey, register, login, me }
