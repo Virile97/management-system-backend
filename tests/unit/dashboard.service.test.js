@@ -55,6 +55,50 @@ describe('dashboard.service', () => {
     })
   })
 
+  describe('getMemberBreakdown', () => {
+    it('computes total and per-status percentages', async () => {
+      vi.spyOn(dashboardRepository, 'countMembersGroupedByStatus').mockResolvedValue([
+        { name: 'Active', _count: { members: 289 } },
+        { name: 'Inactive', _count: { members: 41 } },
+        { name: 'Deceased', _count: { members: 17 } },
+      ])
+
+      const breakdown = await dashboardService.getMemberBreakdown()
+
+      expect(breakdown.total).toBe(347)
+      expect(breakdown.breakdown).toEqual([
+        { status: 'Active', count: 289, percentage: 83.3 },
+        { status: 'Inactive', count: 41, percentage: 11.8 },
+        { status: 'Deceased', count: 17, percentage: 4.9 },
+      ])
+    })
+
+    it('includes statuses with zero members instead of omitting them', async () => {
+      vi.spyOn(dashboardRepository, 'countMembersGroupedByStatus').mockResolvedValue([
+        { name: 'Active', _count: { members: 0 } },
+        { name: 'Inactive', _count: { members: 0 } },
+        { name: 'Deceased', _count: { members: 0 } },
+      ])
+
+      const breakdown = await dashboardService.getMemberBreakdown()
+
+      expect(breakdown.total).toBe(0)
+      expect(breakdown.breakdown).toHaveLength(3)
+      for (const entry of breakdown.breakdown) {
+        expect(entry.count).toBe(0)
+        expect(entry.percentage).toBe(0)
+      }
+    })
+
+    it('returns an empty breakdown when no statuses exist', async () => {
+      vi.spyOn(dashboardRepository, 'countMembersGroupedByStatus').mockResolvedValue([])
+
+      const breakdown = await dashboardService.getMemberBreakdown()
+
+      expect(breakdown).toEqual({ total: 0, breakdown: [] })
+    })
+  })
+
   describe('getFinanceSummary', () => {
     it('buckets income and expense transactions by month', async () => {
       const now = new Date()

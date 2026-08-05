@@ -40,6 +40,20 @@ async function getStats() {
   return statsCache(computeStats)
 }
 
+async function getMemberBreakdown() {
+  const statuses = await dashboardRepository.countMembersGroupedByStatus()
+  const total = statuses.reduce((sum, status) => sum + status._count.members, 0)
+
+  return {
+    total,
+    breakdown: statuses.map((status) => ({
+      status: status.name,
+      count: status._count.members,
+      percentage: total ? Math.round((status._count.members / total) * 1000) / 10 : 0,
+    })),
+  }
+}
+
 function parseRangeMonths(range) {
   return parseInt(range, 10)
 }
@@ -129,6 +143,7 @@ async function getRecentActivity(limit) {
 
 module.exports = {
   getStats,
+  getMemberBreakdown,
   getFinanceSummary,
   getRecentActivity,
   _clearStatsCache: statsCache.clear,

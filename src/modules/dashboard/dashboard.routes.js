@@ -11,6 +11,7 @@ const router = Router()
 router.use(requireApiKey, authenticate, authorize(ROLES.FINANCE_ADMIN))
 
 router.get('/stats', dashboardController.getStats)
+router.get('/member-breakdown', dashboardController.getMemberBreakdown)
 router.get('/finance-summary', validate(rangeSchema), dashboardController.getFinanceSummary)
 router.get(
   '/recent-activity',

@@ -8,6 +8,12 @@ function countMembersByStatusName(name) {
   return prisma.member.count({ where: { status: { name } } })
 }
 
+function countMembersGroupedByStatus() {
+  return prisma.status.findMany({
+    select: { name: true, _count: { select: { members: true } } },
+  })
+}
+
 function sumTransactionsByTypeName(typeName, { from, to } = {}) {
   return prisma.transaction.aggregate({
     where: {
@@ -52,6 +58,7 @@ function findRecentTransactions(limit) {
 module.exports = {
   countMembers,
   countMembersByStatusName,
+  countMembersGroupedByStatus,
   sumTransactionsByTypeName,
   sumTransactionsGroupedByTypeInRange,
   findRecentMembers,
