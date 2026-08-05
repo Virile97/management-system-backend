@@ -18,5 +18,6 @@ router.post(
   authController.login,
 )
 router.get('/me', authenticate, authController.me)
+router.post('/logout', requireApiKey, authenticate, authController.logout)
 
 module.exports = router

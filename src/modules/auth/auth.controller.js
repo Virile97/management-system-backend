@@ -20,4 +20,8 @@ const me = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, req.user, 'Current user retrieved')
 })
 
-module.exports = { getPublicKey, register, login, me }
+const logout = asyncHandler(async (req, res) => {
+  return ApiResponse.success(res, { loggedOut: true }, 'Logged out successfully')
+})
+
+module.exports = { getPublicKey, register, login, me, logout }
