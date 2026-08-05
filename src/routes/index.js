@@ -3,6 +3,7 @@ const { authRoutes } = require('../modules/auth')
 const { userRoutes } = require('../modules/users')
 const { dashboardRoutes } = require('../modules/dashboard')
 const { memberRoutes } = require('../modules/members')
+const { transactionRoutes } = require('../modules/transactions')
 
 const router = Router()
 
@@ -14,5 +15,6 @@ router.use('/auth', authRoutes)
 router.use('/users', userRoutes)
 router.use('/dashboard', dashboardRoutes)
 router.use('/members', memberRoutes)
+router.use('/transactions', transactionRoutes)
 
 module.exports = router
