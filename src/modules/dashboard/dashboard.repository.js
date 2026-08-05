@@ -1,3 +1,4 @@
+const { ActivityAction } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 
 function countMembers() {
@@ -35,6 +36,7 @@ function sumTransactionsGroupedByTypeInRange(from) {
 
 function findRecentActivityLogs(limit) {
   return prisma.activityLog.findMany({
+    where: { action: { not: ActivityAction.USER_LOGGED_IN } },
     orderBy: { createdAt: 'desc' },
     take: limit,
     select: { id: true, action: true, message: true, detail: true, createdAt: true },

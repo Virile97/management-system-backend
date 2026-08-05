@@ -16,6 +16,16 @@ function toAmountNumber(decimalValue) {
   return decimalValue ? Number(decimalValue) : 0
 }
 
+const phpFormatter = new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 0,
+})
+
+function formatPHP(amount) {
+  return phpFormatter.format(amount)
+}
+
 async function computeStats() {
   const now = new Date()
   const monthStart = startOfMonth(now)
@@ -28,11 +38,14 @@ async function computeStats() {
     dashboardRepository.sumTransactionsByTypeName('Income', { from: monthStart, to: monthEnd }),
   ])
 
+  const monthlyIncomeAmount = toAmountNumber(monthlyIncome._sum.amount)
+
   return {
     totalMembers,
     activeMembers,
     inactiveMembers,
-    monthlyIncome: toAmountNumber(monthlyIncome._sum.amount),
+    monthlyIncome: monthlyIncomeAmount,
+    monthlyIncomeFormatted: formatPHP(monthlyIncomeAmount),
   }
 }
 

@@ -26,6 +26,7 @@ describe('dashboard.service', () => {
         activeMembers: 289,
         inactiveMembers: 41,
         monthlyIncome: 17300,
+        monthlyIncomeFormatted: '₱17,300',
       })
     })
 
@@ -39,6 +40,7 @@ describe('dashboard.service', () => {
       const stats = await dashboardService.getStats()
 
       expect(stats.monthlyIncome).toBe(0)
+      expect(stats.monthlyIncomeFormatted).toBe('₱0')
     })
 
     it('serves a second call from cache without hitting the repository again', async () => {

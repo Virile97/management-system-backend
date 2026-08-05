@@ -1,6 +1,8 @@
 const authRepository = require('./auth.repository')
 const { AppError } = require('../../shared/errors')
 const { hashPassword, comparePassword, signToken } = require('../../shared/utils')
+const { logActivity } = require('../../shared/utils/activity-log')
+const logger = require('../../config/logger')
 
 function toSafeUser(user) {
   return { id: user.id, email: user.email, name: user.name, role: user.role }
@@ -31,6 +33,14 @@ async function login({ email, password }) {
   }
 
   const token = signToken({ sub: user.id, role: user.role })
+
+  logActivity({
+    action: 'USER_LOGGED_IN',
+    message: 'User logged in',
+    detail: user.email,
+    actorId: user.id,
+  }).catch((err) => logger.error({ err }, 'Failed to log USER_LOGGED_IN activity'))
+
   return { user: toSafeUser(user), token }
 }
 
