@@ -115,9 +115,11 @@ async function getFinanceSummary(range) {
 }
 
 function toActivityItem(log) {
+  const actorName = log.actor?.name || log.actor?.email || null
+
   return {
     type: log.action,
-    message: log.message,
+    message: actorName ? `${log.message} by ${actorName}` : log.message,
     detail: log.detail,
     timestamp: log.createdAt,
   }

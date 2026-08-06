@@ -11,4 +11,24 @@ const getMember = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, member, 'Member retrieved')
 })
 
-module.exports = { listMembers, getMember }
+const getConfig = asyncHandler(async (req, res) => {
+  const config = await memberService.getConfig()
+  return ApiResponse.success(res, config, 'Member config retrieved')
+})
+
+const createMember = asyncHandler(async (req, res) => {
+  const member = await memberService.createMember(req.body, req.user.id)
+  return ApiResponse.created(res, member, 'Member created successfully')
+})
+
+const updateMember = asyncHandler(async (req, res) => {
+  const member = await memberService.updateMember(req.params.id, req.body, req.user.id)
+  return ApiResponse.success(res, member, 'Member updated successfully')
+})
+
+const deleteMember = asyncHandler(async (req, res) => {
+  await memberService.deleteMember(req.params.id)
+  return ApiResponse.noContent(res)
+})
+
+module.exports = { listMembers, getMember, getConfig, createMember, updateMember, deleteMember }

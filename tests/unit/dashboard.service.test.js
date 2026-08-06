@@ -149,7 +149,7 @@ describe('dashboard.service', () => {
   })
 
   describe('getRecentActivity', () => {
-    it('maps activity log rows to display items in the order returned', async () => {
+    it('maps activity log rows to display items, appending who performed the action', async () => {
       vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([
         {
           id: 'a1',
@@ -157,6 +157,7 @@ describe('dashboard.service', () => {
           message: 'New member registered',
           detail: 'Margaret Osei',
           createdAt: new Date('2026-08-04T08:00:00Z'),
+          actor: { id: 'u1', name: 'Admin User', email: 'admin@example.com' },
         },
         {
           id: 'a2',
@@ -164,6 +165,7 @@ describe('dashboard.service', () => {
           message: 'Tithe recorded',
           detail: '$2,400 received',
           createdAt: new Date('2026-08-04T05:00:00Z'),
+          actor: null,
         },
       ])
 
@@ -172,7 +174,7 @@ describe('dashboard.service', () => {
       expect(activity).toEqual([
         {
           type: 'MEMBER_REGISTERED',
-          message: 'New member registered',
+          message: 'New member registered by Admin User',
           detail: 'Margaret Osei',
           timestamp: new Date('2026-08-04T08:00:00Z'),
         },
@@ -183,6 +185,23 @@ describe('dashboard.service', () => {
           timestamp: new Date('2026-08-04T05:00:00Z'),
         },
       ])
+    })
+
+    it('falls back to the actor email when name is not set', async () => {
+      vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([
+        {
+          id: 'a1',
+          action: 'MEMBER_REGISTERED',
+          message: 'New member registered',
+          detail: 'Grace Mensah',
+          createdAt: new Date('2026-08-04T08:00:00Z'),
+          actor: { id: 'u2', name: null, email: 'staff@example.com' },
+        },
+      ])
+
+      const activity = await dashboardService.getRecentActivity(5)
+
+      expect(activity[0].message).toBe('New member registered by staff@example.com')
     })
 
     it('passes the requested limit through to the repository', async () => {

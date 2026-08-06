@@ -67,7 +67,38 @@ async function seedLookups() {
     })
   }
 
-  return { statuses, types, categories }
+  const groupRoles = ['Choir', 'Ushers', 'Youth', 'Elders', "Women's Ministry"]
+  const groups = {}
+  for (const role of groupRoles) {
+    const id = seedUuid(`group:${role}`)
+    groups[role] = await prisma.group.upsert({
+      where: { id },
+      update: {},
+      create: { id, role },
+    })
+  }
+
+  const levelNames = ['Career', 'Young People', 'Men', 'Ladies', 'Young Ladies']
+  const levels = {}
+  for (const name of levelNames) {
+    levels[name] = await prisma.level.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    })
+  }
+
+  const lighthouseGroupNames = ['Lighthouse 1', 'Lighthouse 2', 'Lighthouse 3']
+  const lighthouseGroups = {}
+  for (const name of lighthouseGroupNames) {
+    lighthouseGroups[name] = await prisma.lighthouseGroup.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    })
+  }
+
+  return { statuses, types, categories, groups, levels, lighthouseGroups }
 }
 
 async function seedMembers(admin, statuses) {
@@ -119,7 +150,6 @@ async function seedMembers(admin, statuses) {
         lastName: seed.lastName,
         statusId: statuses[seed.status].id,
         addedBy: admin.id,
-        joinedAt: createdAt,
         createdAt,
         updatedAt: createdAt,
       },
@@ -231,11 +261,58 @@ async function seedTransactions(admin, members, types, categories) {
   }
 }
 
+async function seedMemberGroupAssignments(members, groups, levels, lighthouseGroups) {
+  const margaret = members.find((m) => m.firstName === 'Margaret')
+  const grace = members.find((m) => m.firstName === 'Grace')
+
+  await prisma.member.update({
+    where: { id: margaret.id },
+    data: {
+      levelId: levels['Ladies'].id,
+      lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
+      groups: {
+        connectOrCreate: [
+          {
+            where: { memberId_groupId: { memberId: margaret.id, groupId: groups['Choir'].id } },
+            create: { groupId: groups['Choir'].id },
+          },
+          {
+            where: {
+              memberId_groupId: {
+                memberId: margaret.id,
+                groupId: groups["Women's Ministry"].id,
+              },
+            },
+            create: { groupId: groups["Women's Ministry"].id },
+          },
+        ],
+      },
+    },
+  })
+
+  await prisma.member.update({
+    where: { id: grace.id },
+    data: {
+      levelId: levels['Young Ladies'].id,
+      lighthouseGroupId: lighthouseGroups['Lighthouse 2'].id,
+      groups: {
+        connectOrCreate: [
+          {
+            where: { memberId_groupId: { memberId: grace.id, groupId: groups['Ushers'].id } },
+            create: { groupId: groups['Ushers'].id },
+          },
+        ],
+      },
+    },
+  })
+}
+
 async function main() {
   const admin = await seedAdmin()
-  const { statuses, types, categories } = await seedLookups()
+  const { statuses, types, categories, groups, levels, lighthouseGroups } = await seedLookups()
   const members = await seedMembers(admin, statuses)
   await seedTransactions(admin, members, types, categories)
+  await seedMemberGroupAssignments(members, groups, levels, lighthouseGroups)
 
   console.log('Seed complete.')
 }

@@ -39,7 +39,14 @@ function findRecentActivityLogs(limit) {
     where: { action: { not: ActivityAction.USER_LOGGED_IN } },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    select: { id: true, action: true, message: true, detail: true, createdAt: true },
+    select: {
+      id: true,
+      action: true,
+      message: true,
+      detail: true,
+      createdAt: true,
+      actor: { select: { id: true, name: true, email: true } },
+    },
   })
 }
 

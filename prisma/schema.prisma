@@ -14,6 +14,11 @@ enum Role {
   USER
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
 model User {
   id                   String        @id @default(uuid())
   email                String        @unique
@@ -63,39 +68,78 @@ model Status {
 }
 
 model Group {
-  id        String   @id @default(uuid())
+  id        String        @id @default(uuid())
   role      String
-  members   Member[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  members   MemberGroup[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   @@map("groups")
 }
 
+model MemberGroup {
+  member            Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId          String
+  group             Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId           String
+  level             Level?           @relation(fields: [levelId], references: [id])
+  levelId           String?
+  lighthouseGroup   LighthouseGroup? @relation(fields: [lighthouseGroupId], references: [id])
+  lighthouseGroupId String?
+  createdAt         DateTime         @default(now())
+
+  @@id([memberId, groupId])
+  @@index([groupId])
+  @@index([levelId])
+  @@index([lighthouseGroupId])
+  @@map("member_groups")
+}
+
+model Level {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  members   MemberGroup[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("levels")
+}
+
+model LighthouseGroup {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  members   MemberGroup[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("lighthouse_groups")
+}
+
 model Member {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   email       String?
   firstName   String
   middleName  String?
   lastName    String
   contact     String?
+  address     String?
   age         Int?
-  isBaptized  Boolean  @default(false)
+  birthDate   DateTime?
+  gender      Gender?
+  isBaptized  Boolean       @default(false)
+  baptizedAt  DateTime?
   soulWinner  String?
-  group       Group?   @relation(fields: [groupId], references: [id])
-  groupId     String?
-  status      Status?  @relation(fields: [statusId], references: [id])
+  groups      MemberGroup[]
+  status      Status?       @relation(fields: [statusId], references: [id])
   statusId    String?
-  addedByUser User?    @relation("MemberAddedBy", fields: [addedBy], references: [id])
+  addedByUser User?         @relation("MemberAddedBy", fields: [addedBy], references: [id])
   addedBy     String?
-  joinedAt    DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   transactions Transaction[]
 
   @@index([statusId])
-  @@index([groupId])
   @@map("members")
 }
 
