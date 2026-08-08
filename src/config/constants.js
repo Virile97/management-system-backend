@@ -1,7 +1,7 @@
 const ROLES = Object.freeze({
+  USER: 'USER',
   ADMIN: 'ADMIN',
   FINANCE_ADMIN: 'FINANCE_ADMIN',
-  USER: 'USER',
 })
 
 const PAGINATION = Object.freeze({

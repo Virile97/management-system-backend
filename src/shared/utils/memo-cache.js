@@ -7,8 +7,10 @@ function createMemoCache(ttlMs) {
     if (cached && now < expiresAt) {
       return cached
     }
+
     cached = await compute()
     expiresAt = now + ttlMs
+
     return cached
   }
 
