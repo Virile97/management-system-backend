@@ -43,4 +43,15 @@ const updateMemberSchema = z.object({
   }),
 })
 
-module.exports = { listMembersSchema, createMemberSchema, updateMemberSchema }
+const bulkDeleteMembersSchema = z.object({
+  body: z.object({
+    ids: z.array(z.string().uuid('Invalid id format')).min(1, 'ids must contain at least one id'),
+  }),
+})
+
+module.exports = {
+  listMembersSchema,
+  createMemberSchema,
+  updateMemberSchema,
+  bulkDeleteMembersSchema,
+}

@@ -80,7 +80,13 @@ async function updateMember(id, data, actorId) {
 
   const { groupIds, levelId, lighthouseGroupId, ...fields } = data
 
-  const updated = await memberRepository.updateById(id, fields, groupIds, levelId, lighthouseGroupId)
+  const updated = await memberRepository.updateById(
+    id,
+    fields,
+    groupIds,
+    levelId,
+    lighthouseGroupId,
+  )
 
   if (fields.statusId && fields.statusId !== existing.statusId) {
     logMemberActivity({
@@ -102,13 +108,43 @@ async function updateMember(id, data, actorId) {
   return toMemberResponse(updated)
 }
 
-async function deleteMember(id) {
+async function deleteMember(id, actorId) {
   const existing = await memberRepository.findById(id)
   if (!existing) {
     throw AppError.notFound('Member not found')
   }
 
   await memberRepository.deleteById(id)
+
+  logMemberActivity({
+    action: 'MEMBER_DELETED',
+    message: 'Member deleted',
+    detail: `${existing.firstName} ${existing.lastName}`,
+    actorId,
+  })
+}
+
+async function deleteMembers(ids, actorId) {
+  const uniqueIds = [...new Set(ids)]
+  const existing = await memberRepository.findManyByIds(uniqueIds)
+
+  if (existing.length === 0) {
+    return { deletedCount: 0, deletedIds: [] }
+  }
+
+  const deletedIds = existing.map((m) => m.id)
+  await memberRepository.deleteManyByIds(deletedIds)
+
+  const names = existing.map((m) => `${m.firstName} ${m.lastName}`)
+  logMemberActivity({
+    action: 'MEMBER_DELETED',
+    message: `Deleted ${existing.length} member${existing.length === 1 ? '' : 's'}`,
+    detail: names.join(', '),
+    metadata: { memberIds: deletedIds },
+    actorId,
+  })
+
+  return { deletedCount: existing.length, deletedIds }
 }
 
 module.exports = {
@@ -118,4 +154,5 @@ module.exports = {
   createMember,
   updateMember,
   deleteMember,
+  deleteMembers,
 }

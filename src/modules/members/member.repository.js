@@ -123,6 +123,17 @@ function deleteById(id) {
   return prisma.member.delete({ where: { id } })
 }
 
+function findManyByIds(ids) {
+  return prisma.member.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, firstName: true, lastName: true },
+  })
+}
+
+function deleteManyByIds(ids) {
+  return prisma.member.deleteMany({ where: { id: { in: ids } } })
+}
+
 async function findConfig() {
   const [statuses, levels, lighthouseGroups, groups] = await Promise.all([
     prisma.status.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -144,5 +155,7 @@ module.exports = {
   create,
   updateById,
   deleteById,
+  findManyByIds,
+  deleteManyByIds,
   findConfig,
 }

@@ -27,8 +27,21 @@ const updateMember = asyncHandler(async (req, res) => {
 })
 
 const deleteMember = asyncHandler(async (req, res) => {
-  await memberService.deleteMember(req.params.id)
+  await memberService.deleteMember(req.params.id, req.user.id)
   return ApiResponse.noContent(res)
 })
 
-module.exports = { listMembers, getMember, getConfig, createMember, updateMember, deleteMember }
+const bulkDeleteMembers = asyncHandler(async (req, res) => {
+  const result = await memberService.deleteMembers(req.body.ids, req.user.id)
+  return ApiResponse.success(res, result, 'Members deleted successfully')
+})
+
+module.exports = {
+  listMembers,
+  getMember,
+  getConfig,
+  createMember,
+  updateMember,
+  deleteMember,
+  bulkDeleteMembers,
+}
