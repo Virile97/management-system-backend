@@ -190,41 +190,55 @@ async function seedMembers(admin, statuses) {
   return members
 }
 
-async function seedTransactions(admin, members, types, categories) {
-  const transactionSeeds = [
-    {
-      type: 'Income',
-      category: 'Tithe',
-      amount: '2400',
-      description: '$2,400 received',
-      hoursAgoCreated: 5,
-      member: members[0],
-    },
-    {
-      type: 'Expense',
-      category: 'Building Maintenance',
-      amount: '1800',
-      description: 'Building maintenance — $1,800',
-      hoursAgoCreated: 30,
-      member: null,
-    },
-    {
-      type: 'Income',
-      category: 'Offering',
-      amount: '950',
-      description: '$950 received',
-      hoursAgoCreated: 55,
-      member: members[1],
-    },
-    {
-      type: 'Expense',
-      category: 'Utilities',
-      amount: '420',
-      description: 'Utilities — $420',
-      hoursAgoCreated: 80,
-      member: null,
-    },
+function buildTransactionSeeds(members) {
+  const incomeSeeds = [
+    { category: 'Tithe', amounts: [2400, 1950, 3100, 2750, 2200, 2600, 1800, 3400, 2050, 2900] },
+    { category: 'Offering', amounts: [950, 1200, 800, 1100, 675, 990, 1050, 725] },
   ]
+  const expenseSeeds = [
+    { category: 'Building Maintenance', amounts: [1800, 950, 1250, 700, 600] },
+    { category: 'Utilities', amounts: [420, 380, 465, 410, 395, 440, 405] },
+  ]
+
+  const seeds = []
+  let hoursAgoCreated = 5
+  let memberIndex = 0
+
+  for (const { category, amounts } of incomeSeeds) {
+    for (const amount of amounts) {
+      const member = members.length ? members[memberIndex % members.length] : null
+      memberIndex += 1
+      seeds.push({
+        type: 'Income',
+        category,
+        amount: String(amount),
+        description: `$${amount.toLocaleString()} received`,
+        hoursAgoCreated,
+        member,
+      })
+      hoursAgoCreated += 25
+    }
+  }
+
+  for (const { category, amounts } of expenseSeeds) {
+    for (const amount of amounts) {
+      seeds.push({
+        type: 'Expense',
+        category,
+        amount: String(amount),
+        description: `${category} — $${amount.toLocaleString()}`,
+        hoursAgoCreated,
+        member: null,
+      })
+      hoursAgoCreated += 25
+    }
+  }
+
+  return seeds
+}
+
+async function seedTransactions(admin, members, types, categories) {
+  const transactionSeeds = buildTransactionSeeds(members)
 
   for (const seed of transactionSeeds) {
     const createdAt = hoursAgo(seed.hoursAgoCreated)
@@ -268,13 +282,15 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
   await prisma.member.update({
     where: { id: margaret.id },
     data: {
-      levelId: levels['Ladies'].id,
-      lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
       groups: {
         connectOrCreate: [
           {
             where: { memberId_groupId: { memberId: margaret.id, groupId: groups['Choir'].id } },
-            create: { groupId: groups['Choir'].id },
+            create: {
+              groupId: groups['Choir'].id,
+              levelId: levels['Ladies'].id,
+              lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
+            },
           },
           {
             where: {
@@ -283,7 +299,11 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
                 groupId: groups["Women's Ministry"].id,
               },
             },
-            create: { groupId: groups["Women's Ministry"].id },
+            create: {
+              groupId: groups["Women's Ministry"].id,
+              levelId: levels['Ladies'].id,
+              lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
+            },
           },
         ],
       },
@@ -293,13 +313,15 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
   await prisma.member.update({
     where: { id: grace.id },
     data: {
-      levelId: levels['Young Ladies'].id,
-      lighthouseGroupId: lighthouseGroups['Lighthouse 2'].id,
       groups: {
         connectOrCreate: [
           {
             where: { memberId_groupId: { memberId: grace.id, groupId: groups['Ushers'].id } },
-            create: { groupId: groups['Ushers'].id },
+            create: {
+              groupId: groups['Ushers'].id,
+              levelId: levels['Young Ladies'].id,
+              lighthouseGroupId: lighthouseGroups['Lighthouse 2'].id,
+            },
           },
         ],
       },
