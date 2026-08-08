@@ -14,6 +14,7 @@ const validate = (schema) => (req, res, next) => {
 
   if (result.data.body) req.body = result.data.body
   if (result.data.params) req.params = result.data.params
+  if (result.data.query) Object.assign(req.query, result.data.query)
 
   next()
 }

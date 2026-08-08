@@ -11,4 +11,25 @@ const getTransaction = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, transaction, 'Transaction retrieved')
 })
 
-module.exports = { listTransactions, getTransaction }
+const getStats = asyncHandler(async (req, res) => {
+  const stats = await transactionService.getStats()
+  return ApiResponse.success(res, stats, 'Finance stats retrieved')
+})
+
+const getByCategory = asyncHandler(async (req, res) => {
+  const breakdown = await transactionService.getByCategory()
+  return ApiResponse.success(res, breakdown, 'Category breakdown retrieved')
+})
+
+const getMonthlyTrend = asyncHandler(async (req, res) => {
+  const trend = await transactionService.getMonthlyTrend(req.query.range)
+  return ApiResponse.success(res, trend, 'Monthly trend retrieved')
+})
+
+module.exports = {
+  listTransactions,
+  getTransaction,
+  getStats,
+  getByCategory,
+  getMonthlyTrend,
+}
