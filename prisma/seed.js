@@ -8,6 +8,10 @@ function hoursAgo(hours) {
   return new Date(Date.now() - hours * 60 * 60 * 1000)
 }
 
+function daysAgo(days) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+}
+
 // Deterministic UUID derived from a stable seed key, so re-running the seed
 // upserts the same rows instead of creating duplicates or using non-UUID ids.
 function seedUuid(key) {
@@ -369,6 +373,83 @@ async function seedOfferingBreakdownTransactions(admin, members, types, categori
   }
 }
 
+// One member with a deep offering history so the member-detail offerings
+// endpoint has enough data to exercise its period and offering-type filters.
+// Only five of the offering types are used, so `types` in that response stays a
+// visible subset of the full lookup list. Dates are relative to the seed run:
+// the two most recent land in today/this week, the rest spread across the year.
+// No activity logs here — 20 more entries would crowd out the dashboard feed.
+const MEMBER_OFFERING_SEEDS = [
+  { daysAgoCreated: 0, note: null, breakdown: [['Tithes', 1700]] },
+  { daysAgoCreated: 0, note: 'Sunday service', breakdown: [['Thanksgiving', 900]] },
+  { daysAgoCreated: 2, note: null, breakdown: [['Love', 600]] },
+  { daysAgoCreated: 5, note: null, breakdown: [['Tithes', 1600]] },
+  { daysAgoCreated: 9, note: null, breakdown: [['Sacrificial', 2000]] },
+  { daysAgoCreated: 12, note: 'Annual', breakdown: [['Firstfruit', 900]] },
+  { daysAgoCreated: 16, note: null, breakdown: [['Love', 500]] },
+  { daysAgoCreated: 20, note: null, breakdown: [['Tithes', 1800]] },
+  { daysAgoCreated: 24, note: null, breakdown: [['Thanksgiving', 1300]] },
+  { daysAgoCreated: 28, note: null, breakdown: [['Sacrificial', 1700]] },
+  {
+    daysAgoCreated: 34,
+    note: 'Split gift',
+    breakdown: [
+      ['Tithes', 1500],
+      ['Love', 400],
+    ],
+  },
+  { daysAgoCreated: 41, note: 'Annual', breakdown: [['Firstfruit', 500]] },
+  { daysAgoCreated: 48, note: null, breakdown: [['Love', 550]] },
+  { daysAgoCreated: 55, note: null, breakdown: [['Tithes', 1900]] },
+  { daysAgoCreated: 63, note: null, breakdown: [['Thanksgiving', 800]] },
+  { daysAgoCreated: 72, note: null, breakdown: [['Sacrificial', 1200]] },
+  {
+    daysAgoCreated: 85,
+    note: 'Split gift',
+    breakdown: [
+      ['Tithes', 2100],
+      ['Thanksgiving', 600],
+    ],
+  },
+  { daysAgoCreated: 100, note: null, breakdown: [['Love', 450]] },
+  { daysAgoCreated: 120, note: 'Annual', breakdown: [['Firstfruit', 1000]] },
+  { daysAgoCreated: 150, note: null, breakdown: [['Tithes', 1750]] },
+]
+
+async function seedMemberOfferingHistory(admin, members, types, categories, offeringTypes) {
+  const member = members.find((m) => m.firstName === 'Margaret')
+  if (!member) return
+
+  for (const [index, seed] of MEMBER_OFFERING_SEEDS.entries()) {
+    const createdAt = daysAgo(seed.daysAgoCreated)
+    const id = seedUuid(`transaction:member-offering:${member.id}:${index}`)
+    const total = seed.breakdown.reduce((sum, [, amount]) => sum + amount, 0)
+
+    await prisma.transaction.upsert({
+      where: { id },
+      update: {},
+      create: {
+        id,
+        typeId: types['Income'].id,
+        categoryId: categories['Offering'].id,
+        amount: String(total),
+        description: seed.note,
+        memberId: member.id,
+        recordedBy: admin.id,
+        createdAt,
+        updatedAt: createdAt,
+        items: {
+          create: seed.breakdown.map(([offeringTypeName, amount], itemIndex) => ({
+            id: seedUuid(`transaction-item:member-offering:${member.id}:${index}:${itemIndex}`),
+            offeringTypeId: offeringTypes[offeringTypeName].id,
+            amount: String(amount),
+          })),
+        },
+      },
+    })
+  }
+}
+
 async function seedMemberGroupAssignments(members, groups, levels, lighthouseGroups) {
   const margaret = members.find((m) => m.firstName === 'Margaret')
   const grace = members.find((m) => m.firstName === 'Grace')
@@ -430,6 +511,7 @@ async function main() {
   const members = await seedMembers(admin, statuses)
   await seedTransactions(admin, members, types, categories)
   await seedOfferingBreakdownTransactions(admin, members, types, categories, offeringTypes)
+  await seedMemberOfferingHistory(admin, members, types, categories, offeringTypes)
   await seedMemberGroupAssignments(members, groups, levels, lighthouseGroups)
 
   console.log('Seed complete.')

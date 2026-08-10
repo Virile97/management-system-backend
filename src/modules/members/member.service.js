@@ -3,6 +3,7 @@ const { AppError } = require('../../shared/errors')
 const { getPagination, buildMeta } = require('../../shared/utils')
 const { logActivity } = require('../../shared/utils/activity-log')
 const logger = require('../../config/logger')
+const { resolvePeriodRange } = require('../../shared/utils/period-range')
 
 // level/lighthouseGroup now live on each member_groups row (duplicated across
 // a member's rows), so the member-level view reads them off the first row.
@@ -67,6 +68,69 @@ async function getMemberById(id) {
     throw AppError.notFound('Member not found')
   }
   return toMemberResponse(member)
+}
+
+function toAmountNumber(decimalValue) {
+  return decimalValue ? Number(decimalValue) : 0
+}
+
+// One row per offering-type line item so the list matches how offerings are
+// displayed. Transactions recorded without a breakdown still yield a single
+// row with a null offeringType.
+function toOfferingRows(transaction) {
+  const note = transaction.description ?? null
+
+  if (transaction.items.length === 0) {
+    return [
+      {
+        id: transaction.id,
+        transactionId: transaction.id,
+        date: transaction.createdAt,
+        offeringType: null,
+        amount: toAmountNumber(transaction.amount),
+        note,
+      },
+    ]
+  }
+
+  return transaction.items.map((item) => ({
+    id: item.id,
+    transactionId: transaction.id,
+    date: transaction.createdAt,
+    offeringType: item.offeringType,
+    amount: toAmountNumber(item.amount),
+    note,
+  }))
+}
+
+async function getMemberOfferings(id, query) {
+  const exists = await memberRepository.existsById(id)
+  if (!exists) {
+    throw AppError.notFound('Member not found')
+  }
+
+  const { page, limit, skip } = getPagination(query)
+  const { start, end } = resolvePeriodRange(query)
+  const range = { start, end }
+  const offeringTypeIds = query.offeringTypeId
+
+  const [transactions, typeRows, total, totalRecords, sum] = await Promise.all([
+    memberRepository.findOfferingsByMemberId(id, range, offeringTypeIds, { skip, take: limit }),
+    memberRepository.findOfferingTypesByMemberId(id),
+    memberRepository.countOfferingsByMemberId(id, range, offeringTypeIds),
+    memberRepository.countOfferingRowsByMemberId(id, range, offeringTypeIds),
+    memberRepository.sumOfferingsByMemberId(id, range, offeringTypeIds),
+  ])
+
+  return {
+    memberId: id,
+    period: { period: query.period ?? 'month', from: start, to: end },
+    types: typeRows.map((row) => row.offeringType),
+    totalOfferings: toAmountNumber(sum._sum.amount),
+    totalRecords,
+    items: transactions.flatMap(toOfferingRows),
+    meta: buildMeta({ page, limit, total }),
+  }
 }
 
 async function getConfig() {
@@ -176,6 +240,7 @@ module.exports = {
   listMembers,
   getBreakdown,
   getMemberById,
+  getMemberOfferings,
   getConfig,
   createMember,
   updateMember,

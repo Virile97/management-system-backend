@@ -1,4 +1,5 @@
 const { z } = require('zod')
+const { periodQuery, offeringTypeIdsQuery } = require('../../shared/validators/common.validation')
 
 const listMembersSchema = z.object({
   query: z.object({
@@ -18,6 +19,19 @@ const memberBreakdownSchema = z.object({
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
   }),
+})
+
+const memberOfferingsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid id format'),
+  }),
+  query: periodQuery.and(
+    z.object({
+      page: z.coerce.number().int().positive().optional(),
+      limit: z.coerce.number().int().positive().optional(),
+      offeringTypeId: offeringTypeIdsQuery,
+    }),
+  ),
 })
 
 const memberFieldsSchema = {
@@ -63,6 +77,7 @@ const bulkDeleteMembersSchema = z.object({
 module.exports = {
   listMembersSchema,
   memberBreakdownSchema,
+  memberOfferingsSchema,
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,

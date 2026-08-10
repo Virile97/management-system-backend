@@ -1,5 +1,5 @@
 const { z } = require('zod')
-const { periodQuery } = require('../../shared/validators/common.validation')
+const { periodQuery, offeringTypeIdsQuery } = require('../../shared/validators/common.validation')
 
 const listTransactionsSchema = z.object({
   query: z.object({
@@ -14,15 +14,6 @@ const listTransactionsSchema = z.object({
 })
 
 const periodQuerySchema = z.object({ query: periodQuery })
-
-// Accepts repeated query keys (?offeringTypeId=a&offeringTypeId=b, parsed by
-// Express as an array), a single value (parsed as a string), or a
-// comma-separated value, and normalizes all three to an array of ids.
-const offeringTypeIdsQuery = z.preprocess((value) => {
-  if (value === undefined) return undefined
-  const values = Array.isArray(value) ? value : String(value).split(',')
-  return values.map((v) => v.trim()).filter(Boolean)
-}, z.array(z.string().uuid('offeringTypeId must be a valid id')).optional())
 
 const byOfferingTypeSchema = z.object({
   query: periodQuery.and(z.object({ offeringTypeId: offeringTypeIdsQuery })),

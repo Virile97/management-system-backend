@@ -72,6 +72,110 @@ function findById(id) {
   })
 }
 
+async function existsById(id) {
+  const member = await prisma.member.findUnique({ where: { id }, select: { id: true } })
+  return Boolean(member)
+}
+
+function buildCreatedAtRange({ start, end }) {
+  if (!start && !end) return undefined
+  return {
+    ...(start ? { gte: start } : {}),
+    ...(end ? { lte: end } : {}),
+  }
+}
+
+// Offerings are the member's Income transactions; each one carries its
+// per-offering-type breakdown in `items`. The offering type filter is applied
+// both to the transaction (so non-matching ones drop out entirely) and to the
+// included items (so only matching lines come back).
+function buildOfferingFilter(memberId, range, offeringTypeIds) {
+  const typeFilter = offeringTypeIds?.length ? { offeringTypeId: { in: offeringTypeIds } } : null
+
+  return {
+    typeFilter,
+    where: {
+      memberId,
+      type: { name: 'Income' },
+      createdAt: buildCreatedAtRange(range),
+      ...(typeFilter ? { items: { some: typeFilter } } : {}),
+    },
+  }
+}
+
+// Paging happens at the transaction level, so a page holds `take` transactions
+// and yields at least that many rows once multi-type breakdowns are flattened.
+function findOfferingsByMemberId(memberId, range = {}, offeringTypeIds, { skip, take } = {}) {
+  const { where, typeFilter } = buildOfferingFilter(memberId, range, offeringTypeIds)
+
+  return prisma.transaction.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    ...(skip === undefined ? {} : { skip }),
+    ...(take === undefined ? {} : { take }),
+    select: {
+      id: true,
+      description: true,
+      amount: true,
+      createdAt: true,
+      items: {
+        ...(typeFilter ? { where: typeFilter } : {}),
+        select: {
+          id: true,
+          amount: true,
+          offeringType: { select: { id: true, name: true } },
+        },
+      },
+    },
+  })
+}
+
+function countOfferingsByMemberId(memberId, range = {}, offeringTypeIds) {
+  const { where } = buildOfferingFilter(memberId, range, offeringTypeIds)
+  return prisma.transaction.count({ where })
+}
+
+// The displayed row count, which is the line item count plus the offerings
+// recorded as a flat amount with no breakdown. A type filter excludes those
+// flat-amount offerings by definition, since they carry no offering type.
+async function countOfferingRowsByMemberId(memberId, range = {}, offeringTypeIds) {
+  const { where, typeFilter } = buildOfferingFilter(memberId, range, offeringTypeIds)
+
+  const [itemRows, flatRows] = await Promise.all([
+    prisma.transactionItem.count({ where: { ...(typeFilter ?? {}), transaction: where } }),
+    typeFilter ? 0 : prisma.transaction.count({ where: { ...where, items: { none: {} } } }),
+  ])
+
+  return itemRows + flatRows
+}
+
+// Summed across the whole filtered set rather than the current page. With a
+// type filter the total has to come from the line items, since only some of a
+// transaction's items are in scope.
+function sumOfferingsByMemberId(memberId, range = {}, offeringTypeIds) {
+  const { where, typeFilter } = buildOfferingFilter(memberId, range, offeringTypeIds)
+
+  if (typeFilter) {
+    return prisma.transactionItem.aggregate({
+      where: { ...typeFilter, transaction: where },
+      _sum: { amount: true },
+    })
+  }
+
+  return prisma.transaction.aggregate({ where, _sum: { amount: true } })
+}
+
+// Every offering type this member has ever given to, ignoring the period and
+// type filters so the filter options stay stable as the user switches tabs.
+function findOfferingTypesByMemberId(memberId) {
+  return prisma.transactionItem.findMany({
+    where: { transaction: { memberId, type: { name: 'Income' } } },
+    distinct: ['offeringTypeId'],
+    select: { offeringType: { select: { id: true, name: true } } },
+    orderBy: { offeringType: { name: 'asc' } },
+  })
+}
+
 // levelId/lighthouseGroupId now live on member_groups, so they're applied to
 // every group row being written for this member (one row per group).
 function buildGroupRows(groupIds, levelId, lighthouseGroupId) {
@@ -179,6 +283,12 @@ module.exports = {
   countGroupedByStatus,
   findAllStatuses,
   findById,
+  existsById,
+  findOfferingsByMemberId,
+  countOfferingsByMemberId,
+  countOfferingRowsByMemberId,
+  sumOfferingsByMemberId,
+  findOfferingTypesByMemberId,
   create,
   updateById,
   deleteById,

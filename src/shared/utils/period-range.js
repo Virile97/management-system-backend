@@ -10,6 +10,19 @@ function endOfDay(date) {
   return result
 }
 
+// Weeks run Sunday–Saturday.
+function startOfWeek(date) {
+  const result = startOfDay(date)
+  result.setDate(result.getDate() - result.getDay())
+  return result
+}
+
+function endOfWeek(date) {
+  const result = startOfWeek(date)
+  result.setDate(result.getDate() + 6)
+  return endOfDay(result)
+}
+
 function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0)
 }
@@ -22,7 +35,7 @@ function startOfYear(date) {
   return new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0)
 }
 
-// Resolves a period tab (today/month/year/all/custom) into a concrete
+// Resolves a period tab (today/week/month/year/all/custom) into a concrete
 // { start, end } Date range. `start`/`end` are null for `all`, meaning
 // unbounded. `custom` uses the provided from/to as-is (end widened to the
 // end of that day so a same-day range isn't empty). `year` ends at "now"
@@ -33,6 +46,8 @@ function resolvePeriodRange({ period = 'month', from, to } = {}) {
   switch (period) {
     case 'today':
       return { start: startOfDay(now), end: endOfDay(now) }
+    case 'week':
+      return { start: startOfWeek(now), end: endOfWeek(now) }
     case 'year':
       return { start: startOfYear(now), end: now }
     case 'all':
@@ -48,4 +63,12 @@ function resolvePeriodRange({ period = 'month', from, to } = {}) {
   }
 }
 
-module.exports = { resolvePeriodRange, startOfDay, endOfDay, startOfMonth, endOfMonth }
+module.exports = {
+  resolvePeriodRange,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+}

@@ -16,6 +16,11 @@ const getMember = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, member, 'Member retrieved')
 })
 
+const getMemberOfferings = asyncHandler(async (req, res) => {
+  const { meta, ...offerings } = await memberService.getMemberOfferings(req.params.id, req.query)
+  return ApiResponse.success(res, offerings, 'Member offerings retrieved', 200, meta)
+})
+
 const getConfig = asyncHandler(async (req, res) => {
   const config = await memberService.getConfig()
   return ApiResponse.success(res, config, 'Member config retrieved')
@@ -45,6 +50,7 @@ module.exports = {
   listMembers,
   getBreakdown,
   getMember,
+  getMemberOfferings,
   getConfig,
   createMember,
   updateMember,

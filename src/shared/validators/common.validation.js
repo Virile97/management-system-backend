@@ -15,7 +15,7 @@ const paginationQuerySchema = z.object({
 
 const periodQuery = z
   .object({
-    period: z.enum(['today', 'month', 'year', 'all', 'custom']).optional().default('month'),
+    period: z.enum(['today', 'week', 'month', 'year', 'all', 'custom']).optional().default('month'),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
   })
@@ -24,4 +24,13 @@ const periodQuery = z
     path: ['from'],
   })
 
-module.exports = { idParamSchema, paginationQuerySchema, periodQuery }
+// Accepts repeated query keys (?offeringTypeId=a&offeringTypeId=b, parsed by
+// Express as an array), a single value (parsed as a string), or a
+// comma-separated value, and normalizes all three to an array of ids.
+const offeringTypeIdsQuery = z.preprocess((value) => {
+  if (value === undefined) return undefined
+  const values = Array.isArray(value) ? value : String(value).split(',')
+  return values.map((v) => v.trim()).filter(Boolean)
+}, z.array(z.string().uuid('offeringTypeId must be a valid id')).optional())
+
+module.exports = { idParamSchema, paginationQuerySchema, periodQuery, offeringTypeIdsQuery }
