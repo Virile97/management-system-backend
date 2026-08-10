@@ -20,18 +20,34 @@ enum Gender {
 }
 
 model User {
-  id                   String        @id @default(uuid())
-  email                String        @unique
+  id                   String         @id @default(uuid())
+  email                String         @unique
   password             String
   name                 String?
-  role                 Role          @default(USER)
-  membersAdded         Member[]      @relation("MemberAddedBy")
-  transactionsRecorded Transaction[] @relation("TransactionRecordedBy")
+  role                 Role           @default(USER)
+  membersAdded         Member[]       @relation("MemberAddedBy")
+  transactionsRecorded Transaction[]  @relation("TransactionRecordedBy")
   activityLogs         ActivityLog[]
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  refreshTokens        RefreshToken[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  tokenHash  String    @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 enum ActivityAction {
@@ -164,24 +180,49 @@ model Category {
   @@map("categories")
 }
 
+model OfferingType {
+  id        String            @id @default(uuid())
+  name      String            @unique
+  items     TransactionItem[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@map("offering_types")
+}
+
 model Transaction {
-  id             String          @id @default(uuid())
-  member         Member?         @relation(fields: [memberId], references: [id])
+  id             String            @id @default(uuid())
+  member         Member?           @relation(fields: [memberId], references: [id])
   memberId       String?
-  type           TransactionType @relation(fields: [typeId], references: [id])
+  type           TransactionType   @relation(fields: [typeId], references: [id])
   typeId         String
-  category       Category?       @relation(fields: [categoryId], references: [id])
+  category       Category?         @relation(fields: [categoryId], references: [id])
   categoryId     String?
   description    String?
-  amount         Decimal         @db.Decimal(12, 2)
-  recordedByUser User?           @relation("TransactionRecordedBy", fields: [recordedBy], references: [id])
+  amount         Decimal           @db.Decimal(12, 2)
+  items          TransactionItem[]
+  recordedByUser User?             @relation("TransactionRecordedBy", fields: [recordedBy], references: [id])
   recordedBy     String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([typeId])
   @@index([categoryId])
   @@index([createdAt])
   @@index([memberId])
   @@map("transactions")
+}
+
+model TransactionItem {
+  id             String       @id @default(uuid())
+  transaction    Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId  String
+  offeringType   OfferingType @relation(fields: [offeringTypeId], references: [id])
+  offeringTypeId String
+  amount         Decimal      @db.Decimal(12, 2)
+  createdAt      DateTime     @default(now())
+
+  @@index([transactionId])
+  @@index([offeringTypeId])
+  @@map("transaction_items")
 }

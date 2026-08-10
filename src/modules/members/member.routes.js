@@ -4,6 +4,7 @@ const validate = require('../../middlewares/validate.middleware')
 const { authenticate } = require('../../middlewares/auth.middleware')
 const {
   listMembersSchema,
+  memberBreakdownSchema,
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,
@@ -15,6 +16,7 @@ const router = Router()
 router.use(authenticate)
 
 router.get('/config', memberController.getConfig)
+router.get('/breakdown', validate(memberBreakdownSchema), memberController.getBreakdown)
 router.get('/', validate(listMembersSchema), memberController.listMembers)
 router.get('/:id', validate(idParamSchema), memberController.getMember)
 router.post('/', validate(createMemberSchema), memberController.createMember)

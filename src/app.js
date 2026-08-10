@@ -2,6 +2,7 @@ const express = require('express')
 const cors = require('cors')
 const helmet = require('helmet')
 const compression = require('compression')
+const cookieParser = require('cookie-parser')
 
 const env = require('./config/env')
 const routes = require('./routes')
@@ -22,11 +23,13 @@ app.use(
       }
       return callback(new Error('The CORS policy does not allow access from the specified Origin.'))
     },
+    credentials: true,
   }),
 )
 app.use(compression())
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+app.use(cookieParser())
 app.use(requestLogger)
 app.use(rateLimitMiddleware)
 

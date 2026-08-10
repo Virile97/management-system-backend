@@ -10,14 +10,10 @@ const router = Router()
 
 router.get('/public-key', authController.getPublicKey)
 router.post('/register', validate(registerSchema), authController.register)
-router.post(
-  '/login',
-  requireApiKey,
-  decryptPassword,
-  validate(loginSchema),
-  authController.login,
-)
+router.post('/login', requireApiKey, decryptPassword, validate(loginSchema), authController.login)
+router.post('/refresh', requireApiKey, authController.refresh)
 router.get('/me', authenticate, authController.me)
 router.post('/logout', requireApiKey, authenticate, authController.logout)
+router.post('/logout-all', requireApiKey, authenticate, authController.logoutAll)
 
 module.exports = router

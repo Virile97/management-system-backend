@@ -6,6 +6,11 @@ const listMembers = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, items, 'Members retrieved', 200, meta)
 })
 
+const getBreakdown = asyncHandler(async (req, res) => {
+  const breakdown = await memberService.getBreakdown(req.query)
+  return ApiResponse.success(res, breakdown, 'Member breakdown retrieved')
+})
+
 const getMember = asyncHandler(async (req, res) => {
   const member = await memberService.getMemberById(req.params.id)
   return ApiResponse.success(res, member, 'Member retrieved')
@@ -38,6 +43,7 @@ const bulkDeleteMembers = asyncHandler(async (req, res) => {
 
 module.exports = {
   listMembers,
+  getBreakdown,
   getMember,
   getConfig,
   createMember,

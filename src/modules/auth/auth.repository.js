@@ -4,10 +4,14 @@ function findByEmail(email) {
   return prisma.user.findUnique({ where: { email } })
 }
 
+function findById(id) {
+  return prisma.user.findUnique({ where: { id } })
+}
+
 function createUser({ email, password, name }) {
   return prisma.user.create({
     data: { email, password, name },
   })
 }
 
-module.exports = { findByEmail, createUser }
+module.exports = { findByEmail, findById, createUser }

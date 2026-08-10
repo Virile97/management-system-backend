@@ -84,35 +84,61 @@ describe('transaction.service', () => {
     })
   })
 
-  describe('getByCategory', () => {
-    it('sums amounts per category, sorted by total descending', async () => {
-      vi.spyOn(transactionRepository, 'sumGroupedByCategory').mockResolvedValue([
-        { amount: '400', category: { id: 'c1', name: 'Utilities' } },
-        { amount: '2000', category: { id: 'c2', name: 'Tithe' } },
-        { amount: '400', category: { id: 'c2', name: 'Tithe' } },
+  describe('getByOfferingType', () => {
+    it('sums amounts per offering type, sorted by total descending', async () => {
+      vi.spyOn(transactionRepository, 'sumGroupedByOfferingType').mockResolvedValue([
+        { offeringTypeId: 'o1', _sum: { amount: '400' } },
+        { offeringTypeId: 'o2', _sum: { amount: '2400' } },
+      ])
+      vi.spyOn(transactionRepository, 'findOfferingTypesByIds').mockResolvedValue([
+        { id: 'o1', name: 'Love' },
+        { id: 'o2', name: 'Tithes' },
       ])
 
-      const breakdown = await transactionService.getByCategory()
+      const breakdown = await transactionService.getByOfferingType()
 
       expect(breakdown).toEqual([
-        { category: 'Tithe', total: 2400 },
-        { category: 'Utilities', total: 400 },
+        { offeringType: 'Tithes', total: 2400 },
+        { offeringType: 'Love', total: 400 },
       ])
     })
 
-    it('groups transactions with no category under Uncategorized', async () => {
-      vi.spyOn(transactionRepository, 'sumGroupedByCategory').mockResolvedValue([
-        { amount: '100', category: null },
+    it('passes the offeringTypeId filter through to the repository', async () => {
+      vi.spyOn(transactionRepository, 'sumGroupedByOfferingType').mockResolvedValue([
+        { offeringTypeId: 'o1', _sum: { amount: '400' } },
+      ])
+      vi.spyOn(transactionRepository, 'findOfferingTypesByIds').mockResolvedValue([
+        { id: 'o1', name: 'Love' },
       ])
 
-      const breakdown = await transactionService.getByCategory()
+      await transactionService.getByOfferingType({ offeringTypeId: ['o1', 'o2'] })
 
-      expect(breakdown).toEqual([{ category: 'Uncategorized', total: 100 }])
+      expect(transactionRepository.sumGroupedByOfferingType).toHaveBeenCalledWith(
+        expect.any(Object),
+        ['o1', 'o2'],
+      )
     })
   })
 
   describe('getMonthlyTrend', () => {
-    it('buckets income and expense transactions by month', async () => {
+    it('buckets by day when period is month', async () => {
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+      vi.spyOn(transactionRepository, 'findAllForTrend').mockResolvedValue([
+        { amount: '100', createdAt: today, type: { name: 'Income' } },
+        { amount: '40', createdAt: today, type: { name: 'Expense' } },
+      ])
+
+      const trend = await transactionService.getMonthlyTrend({ period: 'month' })
+
+      const todayBucket = trend[now.getDate() - 1]
+      expect(todayBucket.income).toBe(100)
+      expect(todayBucket.expense).toBe(40)
+      expect(todayBucket).not.toHaveProperty('key')
+    })
+
+    it('buckets by month when period is year', async () => {
       const now = new Date()
       const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15)
 
@@ -121,9 +147,9 @@ describe('transaction.service', () => {
         { amount: '40', createdAt: thisMonth, type: { name: 'Expense' } },
       ])
 
-      const trend = await transactionService.getMonthlyTrend('3m')
+      const trend = await transactionService.getMonthlyTrend({ period: 'year' })
 
-      expect(trend).toHaveLength(3)
+      expect(trend).toHaveLength(now.getMonth() + 1)
       const currentBucket = trend[trend.length - 1]
       expect(currentBucket.income).toBe(100)
       expect(currentBucket.expense).toBe(40)

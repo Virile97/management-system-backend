@@ -1,19 +1,32 @@
 const authService = require('./auth.service')
 const { asyncHandler, ApiResponse } = require('../../shared/utils')
 const { publicKey } = require('../../shared/utils/rsa-keys')
+const {
+  COOKIE_NAME,
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+} = require('../../shared/utils/refresh-token-cookie')
 
 const getPublicKey = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, { publicKey }, 'Public key retrieved')
 })
 
 const register = asyncHandler(async (req, res) => {
-  const result = await authService.register(req.body)
+  const { refreshToken, ...result } = await authService.register(req.body)
+  setRefreshTokenCookie(res, refreshToken)
   return ApiResponse.created(res, result, 'Account created successfully')
 })
 
 const login = asyncHandler(async (req, res) => {
-  const result = await authService.login(req.body)
+  const { refreshToken, ...result } = await authService.login(req.body)
+  setRefreshTokenCookie(res, refreshToken)
   return ApiResponse.success(res, result, 'Logged in successfully')
+})
+
+const refresh = asyncHandler(async (req, res) => {
+  const { refreshToken, ...result } = await authService.refresh(req.cookies[COOKIE_NAME])
+  setRefreshTokenCookie(res, refreshToken)
+  return ApiResponse.success(res, result, 'Token refreshed successfully')
 })
 
 const me = asyncHandler(async (req, res) => {
@@ -21,7 +34,15 @@ const me = asyncHandler(async (req, res) => {
 })
 
 const logout = asyncHandler(async (req, res) => {
+  await authService.logout(req.cookies[COOKIE_NAME])
+  clearRefreshTokenCookie(res)
   return ApiResponse.success(res, { loggedOut: true }, 'Logged out successfully')
 })
 
-module.exports = { getPublicKey, register, login, me, logout }
+const logoutAll = asyncHandler(async (req, res) => {
+  await authService.logoutAll(req.user.id)
+  clearRefreshTokenCookie(res)
+  return ApiResponse.success(res, { loggedOut: true }, 'Logged out of all sessions')
+})
+
+module.exports = { getPublicKey, register, login, refresh, me, logout, logoutAll }

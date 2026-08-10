@@ -13,4 +13,15 @@ const paginationQuerySchema = z.object({
   }),
 })
 
-module.exports = { idParamSchema, paginationQuerySchema }
+const periodQuery = z
+  .object({
+    period: z.enum(['today', 'month', 'year', 'all', 'custom']).optional().default('month'),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  })
+  .refine((data) => data.period !== 'custom' || (data.from && data.to), {
+    message: "from and to are required when period is 'custom'",
+    path: ['from'],
+  })
+
+module.exports = { idParamSchema, paginationQuerySchema, periodQuery }

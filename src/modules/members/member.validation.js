@@ -6,6 +6,17 @@ const listMembersSchema = z.object({
     limit: z.coerce.number().int().positive().optional(),
     search: z.string().min(1).optional(),
     status: z.string().min(1).optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  }),
+})
+
+const memberBreakdownSchema = z.object({
+  query: z.object({
+    search: z.string().min(1).optional(),
+    status: z.string().min(1).optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
   }),
 })
 
@@ -51,6 +62,7 @@ const bulkDeleteMembersSchema = z.object({
 
 module.exports = {
   listMembersSchema,
+  memberBreakdownSchema,
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,

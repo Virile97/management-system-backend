@@ -15,7 +15,9 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
 
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
-  JWT_EXPIRES_IN: z.string().default('7d'),
+  JWT_EXPIRES_IN: z.string().default('15m'),
+
+  REFRESH_TOKEN_EXPIRES_IN_DAYS: z.coerce.number().default(30),
 
   APP_API_KEY: z.string().min(1, 'APP_API_KEY is required'),
 

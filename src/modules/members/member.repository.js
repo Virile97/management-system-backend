@@ -11,7 +11,13 @@ const memberIncludes = {
   },
 }
 
-function buildWhere({ search, status }) {
+function endOfDay(date) {
+  const end = new Date(date)
+  end.setHours(23, 59, 59, 999)
+  return end
+}
+
+function buildWhere({ search, status, from, to }) {
   const where = {}
 
   if (search) {
@@ -27,12 +33,19 @@ function buildWhere({ search, status }) {
     where.status = { name: status }
   }
 
+  if (from || to) {
+    where.createdAt = {
+      ...(from ? { gte: from } : {}),
+      ...(to ? { lte: endOfDay(to) } : {}),
+    }
+  }
+
   return where
 }
 
-function findMany({ skip, limit, search, status }) {
+function findMany({ skip, limit, search, status, from, to }) {
   return prisma.member.findMany({
-    where: buildWhere({ search, status }),
+    where: buildWhere({ search, status, from, to }),
     skip,
     take: limit,
     orderBy: { createdAt: 'desc' },
@@ -40,8 +53,16 @@ function findMany({ skip, limit, search, status }) {
   })
 }
 
-function count({ search, status }) {
-  return prisma.member.count({ where: buildWhere({ search, status }) })
+function count({ search, status, from, to }) {
+  return prisma.member.count({ where: buildWhere({ search, status, from, to }) })
+}
+
+function countGroupedByStatus({ search, status, from, to }) {
+  return prisma.member.groupBy({
+    by: ['statusId'],
+    where: buildWhere({ search, status, from, to }),
+    _count: { _all: true },
+  })
 }
 
 function findById(id) {
@@ -134,6 +155,10 @@ function deleteManyByIds(ids) {
   return prisma.member.deleteMany({ where: { id: { in: ids } } })
 }
 
+function findAllStatuses() {
+  return prisma.status.findMany({ select: { id: true, name: true } })
+}
+
 async function findConfig() {
   const [statuses, levels, lighthouseGroups, groups] = await Promise.all([
     prisma.status.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -151,6 +176,8 @@ async function findConfig() {
 module.exports = {
   findMany,
   count,
+  countGroupedByStatus,
+  findAllStatuses,
   findById,
   create,
   updateById,

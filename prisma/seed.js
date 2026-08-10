@@ -98,7 +98,32 @@ async function seedLookups() {
     })
   }
 
-  return { statuses, types, categories, groups, levels, lighthouseGroups }
+  const offeringTypeNames = [
+    'Tithes',
+    'Love',
+    'Faith',
+    'Christbirth',
+    'Firstfruit',
+    'Sacrificial',
+    'Thanksgiving',
+    'Bless Offering',
+    "Children's Ministry",
+    'Ensemble',
+    'GCTV',
+    'Mission',
+    'Mercy',
+    'Love Gift – Pastor',
+  ]
+  const offeringTypes = {}
+  for (const name of offeringTypeNames) {
+    offeringTypes[name] = await prisma.offeringType.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    })
+  }
+
+  return { statuses, types, categories, groups, levels, lighthouseGroups, offeringTypes }
 }
 
 async function seedMembers(admin, statuses) {
@@ -275,6 +300,75 @@ async function seedTransactions(admin, members, types, categories) {
   }
 }
 
+async function seedOfferingBreakdownTransactions(admin, members, types, categories, offeringTypes) {
+  const offeringAmounts = {
+    Tithes: 2400,
+    Love: 950,
+    Faith: 800,
+    Christbirth: 600,
+    Firstfruit: 1100,
+    Sacrificial: 750,
+    Thanksgiving: 1300,
+    'Bless Offering': 500,
+    "Children's Ministry": 350,
+    Ensemble: 275,
+    GCTV: 425,
+    Mission: 900,
+    Mercy: 300,
+    'Love Gift – Pastor': 650,
+  }
+
+  let hoursAgoCreated = 3
+  let memberIndex = 0
+
+  for (const [offeringTypeName, amount] of Object.entries(offeringAmounts)) {
+    const createdAt = hoursAgo(hoursAgoCreated)
+    const id = seedUuid(`transaction:offering:${offeringTypeName}`)
+    const member = members.length ? members[memberIndex % members.length] : null
+    memberIndex += 1
+
+    await prisma.transaction.upsert({
+      where: { id },
+      update: {},
+      create: {
+        id,
+        typeId: types['Income'].id,
+        categoryId: categories['Offering'].id,
+        amount: String(amount),
+        description: `${offeringTypeName} offering`,
+        memberId: member ? member.id : null,
+        recordedBy: admin.id,
+        createdAt,
+        updatedAt: createdAt,
+        items: {
+          create: [
+            {
+              id: seedUuid(`transaction-item:${offeringTypeName}`),
+              offeringTypeId: offeringTypes[offeringTypeName].id,
+              amount: String(amount),
+            },
+          ],
+        },
+      },
+    })
+
+    await prisma.activityLog.upsert({
+      where: { id: seedUuid(`activity:tx:offering:${offeringTypeName}`) },
+      update: {},
+      create: {
+        id: seedUuid(`activity:tx:offering:${offeringTypeName}`),
+        action: 'INCOME_RECORDED',
+        message: `${offeringTypeName} offering recorded`,
+        detail: `${offeringTypeName} offering`,
+        actorId: admin.id,
+        createdAt,
+      },
+    })
+
+    hoursAgoCreated += 17
+  }
+}
+
 async function seedMemberGroupAssignments(members, groups, levels, lighthouseGroups) {
   const margaret = members.find((m) => m.firstName === 'Margaret')
   const grace = members.find((m) => m.firstName === 'Grace')
@@ -331,9 +425,11 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
 
 async function main() {
   const admin = await seedAdmin()
-  const { statuses, types, categories, groups, levels, lighthouseGroups } = await seedLookups()
+  const { statuses, types, categories, groups, levels, lighthouseGroups, offeringTypes } =
+    await seedLookups()
   const members = await seedMembers(admin, statuses)
   await seedTransactions(admin, members, types, categories)
+  await seedOfferingBreakdownTransactions(admin, members, types, categories, offeringTypes)
   await seedMemberGroupAssignments(members, groups, levels, lighthouseGroups)
 
   console.log('Seed complete.')

@@ -23,17 +23,42 @@ function toMemberResponse(member) {
 
 async function listMembers(query) {
   const { page, limit, skip } = getPagination(query)
-  const { search, status } = query
+  const { search, status, from, to } = query
 
   const [members, total] = await Promise.all([
-    memberRepository.findMany({ skip, limit, search, status }),
-    memberRepository.count({ search, status }),
+    memberRepository.findMany({ skip, limit, search, status, from, to }),
+    memberRepository.count({ search, status, from, to }),
   ])
 
   return {
     items: members.map(toMemberResponse),
     meta: buildMeta({ page, limit, total }),
   }
+}
+
+async function getBreakdown(query) {
+  const { search, status, from, to } = query
+
+  const [grouped, statuses] = await Promise.all([
+    memberRepository.countGroupedByStatus({ search, status, from, to }),
+    memberRepository.findAllStatuses(),
+  ])
+
+  const namesById = new Map(statuses.map((s) => [s.id, s.name]))
+  const total = grouped.reduce((sum, row) => sum + row._count._all, 0)
+
+  const breakdown = grouped
+    .map((row) => {
+      const count = row._count._all
+      return {
+        status: row.statusId ? (namesById.get(row.statusId) ?? 'Unknown') : 'Unassigned',
+        count,
+        percentage: total ? Math.round((count / total) * 1000) / 10 : 0,
+      }
+    })
+    .sort((a, b) => b.count - a.count)
+
+  return { total, breakdown }
 }
 
 async function getMemberById(id) {
@@ -149,6 +174,7 @@ async function deleteMembers(ids, actorId) {
 
 module.exports = {
   listMembers,
+  getBreakdown,
   getMemberById,
   getConfig,
   createMember,
