@@ -34,6 +34,16 @@ const memberOfferingsSchema = z.object({
   ),
 })
 
+const getMemberSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid id format'),
+  }),
+  query: z.object({
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().optional(),
+  }),
+})
+
 const memberFieldsSchema = {
   middleName: z.string().min(1).optional(),
   email: z.string().email('Invalid email address').optional(),
@@ -78,6 +88,7 @@ module.exports = {
   listMembersSchema,
   memberBreakdownSchema,
   memberOfferingsSchema,
+  getMemberSchema,
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,

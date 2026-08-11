@@ -4,14 +4,27 @@ const { getPagination, buildMeta } = require('../../shared/utils')
 const { logActivity } = require('../../shared/utils/activity-log')
 const logger = require('../../config/logger')
 const { resolvePeriodRange } = require('../../shared/utils/period-range')
+const { deriveStatus } = require('../attendance/attendance.service')
 
 // level/lighthouseGroup now live on each member_groups row (duplicated across
 // a member's rows), so the member-level view reads them off the first row.
 // groups is flattened to a plain array of { id, role }, and the raw FK ids
 // are dropped since the nested status/level/lighthouseGroup objects replace
 // them.
+function toAttendanceResponse(attendance) {
+  return {
+    id: attendance.id,
+    date: attendance.date,
+    morningIn: attendance.morningIn ?? null,
+    morningOut: attendance.morningOut ?? null,
+    afternoonIn: attendance.afternoonIn ?? null,
+    afternoonOut: attendance.afternoonOut ?? null,
+    status: deriveStatus(attendance),
+  }
+}
+
 function toMemberResponse(member) {
-  const { statusId: _statusId, groups, ...rest } = member
+  const { statusId: _statusId, groups, attendances, ...rest } = member
   const [firstGroup] = groups
 
   return {
@@ -19,6 +32,9 @@ function toMemberResponse(member) {
     level: firstGroup?.level ?? null,
     lighthouseGroup: firstGroup?.lighthouseGroup ?? null,
     groups: groups.map(({ group }) => group),
+    ...(attendances !== undefined
+      ? { attendances: attendances.map(toAttendanceResponse) }
+      : {}),
   }
 }
 
@@ -62,12 +78,23 @@ async function getBreakdown(query) {
   return { total, breakdown }
 }
 
-async function getMemberById(id) {
-  const member = await memberRepository.findById(id)
+async function getMemberById(id, query = {}) {
+  const { page, limit, skip } = getPagination(query)
+
+  const [member, attendances, attendanceTotal] = await Promise.all([
+    memberRepository.findById(id),
+    memberRepository.findAttendancesByMemberId(id, { skip, limit }),
+    memberRepository.countAttendancesByMemberId(id),
+  ])
+
   if (!member) {
     throw AppError.notFound('Member not found')
   }
-  return toMemberResponse(member)
+
+  return {
+    member: toMemberResponse({ ...member, attendances }),
+    meta: buildMeta({ page, limit, total: attendanceTotal }),
+  }
 }
 
 function toAmountNumber(decimalValue) {

@@ -6,6 +6,7 @@ const {
   listMembersSchema,
   memberBreakdownSchema,
   memberOfferingsSchema,
+  getMemberSchema,
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,
@@ -20,7 +21,7 @@ router.use(authenticate)
 router.get('/config', memberController.getConfig)
 router.get('/breakdown', validate(memberBreakdownSchema), memberController.getBreakdown)
 router.get('/', validate(listMembersSchema), memberController.listMembers)
-router.get('/:id', validate(idParamSchema), memberController.getMember)
+router.get('/:id', validate(getMemberSchema), memberController.getMember)
 // Financial data, so it follows the same role gate as the transactions module.
 router.get(
   '/:id/offerings',

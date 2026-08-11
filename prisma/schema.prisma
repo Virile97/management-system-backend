@@ -27,6 +27,7 @@ model User {
   role                 Role           @default(USER)
   membersAdded         Member[]       @relation("MemberAddedBy")
   transactionsRecorded Transaction[]  @relation("TransactionRecordedBy")
+  attendancesRecorded  Attendance[]   @relation("AttendanceRecordedBy")
   activityLogs         ActivityLog[]
   refreshTokens        RefreshToken[]
   createdAt            DateTime       @default(now())
@@ -155,6 +156,7 @@ model Member {
   updatedAt   DateTime      @updatedAt
 
   transactions Transaction[]
+  attendances  Attendance[]
 
   @@index([statusId])
   @@map("members")
@@ -225,4 +227,27 @@ model TransactionItem {
   @@index([transactionId])
   @@index([offeringTypeId])
   @@map("transaction_items")
+}
+
+// One row per member per calendar day. Session times are nullable — unchecked
+// boxes stay null. Attendance status (full day / morning only / etc.) is
+// derived from which of the four timestamps are set, not stored.
+model Attendance {
+  id             String    @id @default(uuid())
+  member         Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId       String
+  date           DateTime  @db.Date
+  morningIn      DateTime?
+  morningOut     DateTime?
+  afternoonIn    DateTime?
+  afternoonOut   DateTime?
+  recordedByUser User?     @relation("AttendanceRecordedBy", fields: [recordedBy], references: [id])
+  recordedBy     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([memberId, date])
+  @@index([date])
+  @@index([recordedBy])
+  @@map("attendances")
 }

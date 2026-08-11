@@ -12,8 +12,8 @@ const getBreakdown = asyncHandler(async (req, res) => {
 })
 
 const getMember = asyncHandler(async (req, res) => {
-  const member = await memberService.getMemberById(req.params.id)
-  return ApiResponse.success(res, member, 'Member retrieved')
+  const { member, meta } = await memberService.getMemberById(req.params.id, req.query)
+  return ApiResponse.success(res, member, 'Member retrieved', 200, meta)
 })
 
 const getMemberOfferings = asyncHandler(async (req, res) => {

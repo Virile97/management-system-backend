@@ -504,6 +504,66 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
   })
 }
 
+async function seedAttendance(admin, members) {
+  const margaret = members.find((m) => m.firstName === 'Margaret')
+  const grace = members.find((m) => m.firstName === 'Grace')
+  const david = members.find((m) => m.firstName === 'David')
+  if (!margaret || !grace || !david) return
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const at = (hours, minutes) => {
+    const d = new Date(today)
+    d.setHours(hours, minutes, 0, 0)
+    return d
+  }
+
+  const rows = [
+    {
+      member: margaret,
+      morningIn: at(8, 2),
+      morningOut: at(12, 15),
+      afternoonIn: at(13, 30),
+      afternoonOut: at(17, 0),
+    },
+    {
+      member: grace,
+      morningIn: at(8, 15),
+      morningOut: at(12, 0),
+      afternoonIn: null,
+      afternoonOut: null,
+    },
+    {
+      member: david,
+      morningIn: null,
+      morningOut: null,
+      afternoonIn: null,
+      afternoonOut: null,
+    },
+  ]
+
+  for (const row of rows) {
+    if (!row.morningIn && !row.afternoonIn) continue
+
+    const id = seedUuid(`attendance:${row.member.id}:${today.toISOString().slice(0, 10)}`)
+    await prisma.attendance.upsert({
+      where: { memberId_date: { memberId: row.member.id, date: today } },
+      update: {},
+      create: {
+        id,
+        memberId: row.member.id,
+        date: today,
+        morningIn: row.morningIn,
+        morningOut: row.morningOut,
+        afternoonIn: row.afternoonIn,
+        afternoonOut: row.afternoonOut,
+        recordedBy: admin.id,
+      },
+    })
+  }
+}
+
 async function main() {
   const admin = await seedAdmin()
   const { statuses, types, categories, groups, levels, lighthouseGroups, offeringTypes } =
@@ -513,6 +573,7 @@ async function main() {
   await seedOfferingBreakdownTransactions(admin, members, types, categories, offeringTypes)
   await seedMemberOfferingHistory(admin, members, types, categories, offeringTypes)
   await seedMemberGroupAssignments(members, groups, levels, lighthouseGroups)
+  await seedAttendance(admin, members)
 
   console.log('Seed complete.')
 }

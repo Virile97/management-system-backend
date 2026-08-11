@@ -72,6 +72,27 @@ function findById(id) {
   })
 }
 
+function findAttendancesByMemberId(memberId, { skip, limit } = {}) {
+  return prisma.attendance.findMany({
+    where: { memberId },
+    orderBy: { date: 'desc' },
+    ...(skip === undefined ? {} : { skip }),
+    ...(limit === undefined ? {} : { take: limit }),
+    select: {
+      id: true,
+      date: true,
+      morningIn: true,
+      morningOut: true,
+      afternoonIn: true,
+      afternoonOut: true,
+    },
+  })
+}
+
+function countAttendancesByMemberId(memberId) {
+  return prisma.attendance.count({ where: { memberId } })
+}
+
 async function existsById(id) {
   const member = await prisma.member.findUnique({ where: { id }, select: { id: true } })
   return Boolean(member)
@@ -303,6 +324,8 @@ module.exports = {
   existsById,
   findByName,
   findByEmail,
+  findAttendancesByMemberId,
+  countAttendancesByMemberId,
   findOfferingsByMemberId,
   countOfferingsByMemberId,
   countOfferingRowsByMemberId,
