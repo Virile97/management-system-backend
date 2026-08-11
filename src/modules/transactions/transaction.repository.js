@@ -1,5 +1,12 @@
 const prisma = require('../../config/prisma')
 
+const transactionIncludes = {
+  type: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true } },
+  recordedByUser: { select: { id: true, name: true, email: true } },
+  items: { include: { offeringType: { select: { id: true, name: true } } } },
+}
+
 function endOfDay(date) {
   const end = new Date(date)
   end.setHours(23, 59, 59, 999)
@@ -41,12 +48,7 @@ function findMany({ skip, limit, type, category, search, from, to }) {
     skip,
     take: limit,
     orderBy: { createdAt: 'desc' },
-    include: {
-      type: { select: { id: true, name: true } },
-      category: { select: { id: true, name: true } },
-      recordedByUser: { select: { id: true, name: true, email: true } },
-      items: { include: { offeringType: { select: { id: true, name: true } } } },
-    },
+    include: transactionIncludes,
   })
 }
 
@@ -57,12 +59,7 @@ function count({ type, category, search, from, to }) {
 function findById(id) {
   return prisma.transaction.findUnique({
     where: { id },
-    include: {
-      type: { select: { id: true, name: true } },
-      category: { select: { id: true, name: true } },
-      recordedByUser: { select: { id: true, name: true, email: true } },
-      items: { include: { offeringType: { select: { id: true, name: true } } } },
-    },
+    include: transactionIncludes,
   })
 }
 
@@ -149,12 +146,46 @@ function create({ typeId, categoryId, memberId, description, date, amount, recor
           }
         : {}),
     },
-    include: {
-      type: { select: { id: true, name: true } },
-      category: { select: { id: true, name: true } },
-      recordedByUser: { select: { id: true, name: true, email: true } },
-      items: { include: { offeringType: { select: { id: true, name: true } } } },
+    include: transactionIncludes,
+  })
+}
+
+// Nested deleteMany + create on items is still one Prisma update call, so it
+// stays a single round-trip and doesn't need an interactive $transaction.
+function updateById(id, { typeId, categoryId, memberId, description, date, amount, breakdown }) {
+  return prisma.transaction.update({
+    where: { id },
+    data: {
+      ...(typeId !== undefined ? { type: { connect: { id: typeId } } } : {}),
+      ...(categoryId === null
+        ? { category: { disconnect: true } }
+        : categoryId !== undefined
+          ? { category: { connect: { id: categoryId } } }
+          : {}),
+      ...(memberId === null
+        ? { member: { disconnect: true } }
+        : memberId !== undefined
+          ? { member: { connect: { id: memberId } } }
+          : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(date !== undefined ? { createdAt: date } : {}),
+      ...(amount !== undefined ? { amount } : {}),
+      ...(breakdown !== undefined
+        ? {
+            items: {
+              deleteMany: {},
+              create: breakdown.map((item) => ({
+                amount: item.amount,
+                offeringType: { connect: { id: item.offeringTypeId } },
+              })),
+            },
+          }
+        : // Flat amount edit — drop any previous breakdown so totals stay consistent.
+          amount !== undefined
+          ? { items: { deleteMany: {} } }
+          : {}),
     },
+    include: transactionIncludes,
   })
 }
 
@@ -169,4 +200,5 @@ module.exports = {
   findEarliestTransactionDate,
   findConfig,
   create,
+  updateById,
 }

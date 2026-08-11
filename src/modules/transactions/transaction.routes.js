@@ -7,6 +7,7 @@ const {
   periodQuerySchema,
   byOfferingTypeSchema,
   createTransactionSchema,
+  updateTransactionSchema,
 } = require('./transaction.validation')
 const { idParamSchema } = require('../../shared/validators/common.validation')
 const { ROLES } = require('../../config/constants')
@@ -26,5 +27,6 @@ router.get('/config', transactionController.getConfig)
 router.get('/', validate(listTransactionsSchema), transactionController.listTransactions)
 router.get('/:id', validate(idParamSchema), transactionController.getTransaction)
 router.post('/', validate(createTransactionSchema), transactionController.createTransaction)
+router.patch('/:id', validate(updateTransactionSchema), transactionController.updateTransaction)
 
 module.exports = router

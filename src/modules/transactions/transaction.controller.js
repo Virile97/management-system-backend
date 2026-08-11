@@ -36,6 +36,11 @@ const createTransaction = asyncHandler(async (req, res) => {
   return ApiResponse.created(res, transaction, 'Transaction recorded successfully')
 })
 
+const updateTransaction = asyncHandler(async (req, res) => {
+  const transaction = await transactionService.updateTransaction(req.params.id, req.body)
+  return ApiResponse.success(res, transaction, 'Transaction updated successfully')
+})
+
 module.exports = {
   listTransactions,
   getTransaction,
@@ -44,4 +49,5 @@ module.exports = {
   getMonthlyTrend,
   getConfig,
   createTransaction,
+  updateTransaction,
 }

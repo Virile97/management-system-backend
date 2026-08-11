@@ -196,6 +196,27 @@ async function createTransaction(data, actorId) {
   return toTransactionResponse(transaction)
 }
 
+async function updateTransaction(id, data) {
+  const existing = await transactionRepository.findById(id)
+  if (!existing) {
+    throw AppError.notFound('Transaction not found')
+  }
+
+  const { breakdown, amount, ...fields } = data
+  const totalAmount =
+    breakdown !== undefined
+      ? breakdown.reduce((sum, item) => sum + item.amount, 0)
+      : amount
+
+  const transaction = await transactionRepository.updateById(id, {
+    ...fields,
+    ...(totalAmount !== undefined ? { amount: totalAmount } : {}),
+    ...(breakdown !== undefined ? { breakdown } : {}),
+  })
+
+  return toTransactionResponse(transaction)
+}
+
 module.exports = {
   listTransactions,
   getTransactionById,
@@ -204,4 +225,5 @@ module.exports = {
   getMonthlyTrend,
   getConfig,
   createTransaction,
+  updateTransaction,
 }

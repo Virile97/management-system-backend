@@ -120,6 +120,77 @@ describe('transaction.service', () => {
     })
   })
 
+  describe('updateTransaction', () => {
+    it('throws not found when the transaction does not exist', async () => {
+      vi.spyOn(transactionRepository, 'findById').mockResolvedValue(null)
+
+      await expect(
+        transactionService.updateTransaction('missing', { description: 'note' }),
+      ).rejects.toMatchObject({ statusCode: 404 })
+    })
+
+    it('derives amount from breakdown and replaces line items', async () => {
+      vi.spyOn(transactionRepository, 'findById').mockResolvedValue({ id: 't1' })
+      vi.spyOn(transactionRepository, 'updateById').mockResolvedValue({
+        id: 't1',
+        typeId: 'type-1',
+        categoryId: 'cat-1',
+        recordedBy: 'user-1',
+        amount: '1500',
+        description: 'Updated',
+        type: { id: 'type-1', name: 'Income' },
+        category: { id: 'cat-1', name: 'Offering' },
+        recordedByUser: { id: 'user-1', name: 'Admin' },
+        items: [
+          { offeringType: { id: 'o1', name: 'Tithes' }, amount: '900' },
+          { offeringType: { id: 'o2', name: 'Love' }, amount: '600' },
+        ],
+      })
+
+      const result = await transactionService.updateTransaction('t1', {
+        description: 'Updated',
+        breakdown: [
+          { offeringTypeId: 'o1', amount: 900 },
+          { offeringTypeId: 'o2', amount: 600 },
+        ],
+      })
+
+      expect(transactionRepository.updateById).toHaveBeenCalledWith('t1', {
+        description: 'Updated',
+        amount: 1500,
+        breakdown: [
+          { offeringTypeId: 'o1', amount: 900 },
+          { offeringTypeId: 'o2', amount: 600 },
+        ],
+      })
+      expect(result.amount).toBe(1500)
+      expect(result.breakdown).toEqual([
+        { offeringType: { id: 'o1', name: 'Tithes' }, amount: 900 },
+        { offeringType: { id: 'o2', name: 'Love' }, amount: 600 },
+      ])
+    })
+
+    it('passes a flat amount through without inventing a breakdown', async () => {
+      vi.spyOn(transactionRepository, 'findById').mockResolvedValue({ id: 't1' })
+      vi.spyOn(transactionRepository, 'updateById').mockResolvedValue({
+        id: 't1',
+        typeId: 'type-1',
+        categoryId: null,
+        recordedBy: 'user-1',
+        amount: '500',
+        description: null,
+        type: { id: 'type-1', name: 'Expense' },
+        category: null,
+        recordedByUser: { id: 'user-1', name: 'Admin' },
+        items: [],
+      })
+
+      await transactionService.updateTransaction('t1', { amount: 500 })
+
+      expect(transactionRepository.updateById).toHaveBeenCalledWith('t1', { amount: 500 })
+    })
+  })
+
   describe('getMonthlyTrend', () => {
     it('buckets by day when period is month', async () => {
       const now = new Date()
