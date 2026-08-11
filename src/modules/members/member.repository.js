@@ -77,6 +77,23 @@ async function existsById(id) {
   return Boolean(member)
 }
 
+function findByName(firstName, lastName) {
+  return prisma.member.findFirst({
+    where: {
+      firstName: { equals: firstName, mode: 'insensitive' },
+      lastName: { equals: lastName, mode: 'insensitive' },
+    },
+    select: { id: true, firstName: true, lastName: true, email: true },
+  })
+}
+
+function findByEmail(email) {
+  return prisma.member.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+    select: { id: true, firstName: true, lastName: true, email: true },
+  })
+}
+
 function buildCreatedAtRange({ start, end }) {
   if (!start && !end) return undefined
   return {
@@ -284,6 +301,8 @@ module.exports = {
   findAllStatuses,
   findById,
   existsById,
+  findByName,
+  findByEmail,
   findOfferingsByMemberId,
   countOfferingsByMemberId,
   countOfferingRowsByMemberId,

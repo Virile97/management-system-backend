@@ -32,9 +32,9 @@ const createTransactionSchema = z.object({
   body: z
     .object({
       typeId: z.string().uuid('typeId must be a valid id'),
-      categoryId: z.string().uuid('categoryId must be a valid id').optional(),
-      memberId: z.string().uuid('memberId must be a valid id').optional(),
-      description: z.string().min(1).optional(),
+      categoryId: z.string().uuid('categoryId must be a valid id').nullable().optional(),
+      memberId: z.string().uuid('memberId must be a valid id').nullable().optional(),
+      description: z.string().min(1).nullable().optional(),
       date: z.coerce.date().optional(),
       amount: z.coerce.number().positive('amount must be greater than 0').optional(),
       breakdown: breakdownSchema.optional(),

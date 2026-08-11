@@ -144,6 +144,18 @@ function logMemberActivity(entry) {
 async function createMember(data, actorId) {
   const { groupIds, levelId, lighthouseGroupId, ...fields } = data
 
+  const existingByName = await memberRepository.findByName(fields.firstName, fields.lastName)
+  if (existingByName) {
+    throw AppError.conflict('A member with this name already exists')
+  }
+
+  if (fields.email) {
+    const existingByEmail = await memberRepository.findByEmail(fields.email)
+    if (existingByEmail) {
+      throw AppError.conflict('A member with this email already exists')
+    }
+  }
+
   const member = await memberRepository.create(
     { ...fields, addedBy: actorId },
     groupIds,

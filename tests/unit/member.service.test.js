@@ -184,4 +184,53 @@ describe('member.service', () => {
       vi.useRealTimers()
     })
   })
+
+  describe('createMember', () => {
+    it('rejects when a member with the same name already exists', async () => {
+      vi.spyOn(memberRepository, 'findByName').mockResolvedValue({ id: 'm1' })
+
+      await expect(
+        memberService.createMember({ firstName: 'Margaret', lastName: 'Osei' }, 'actor-1'),
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: 'A member with this name already exists',
+      })
+    })
+
+    it('rejects when a member with the same email already exists', async () => {
+      vi.spyOn(memberRepository, 'findByName').mockResolvedValue(null)
+      vi.spyOn(memberRepository, 'findByEmail').mockResolvedValue({ id: 'm1' })
+
+      await expect(
+        memberService.createMember(
+          { firstName: 'New', lastName: 'Person', email: 'existing@example.com' },
+          'actor-1',
+        ),
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: 'A member with this email already exists',
+      })
+    })
+
+    it('creates the member when name and email are free', async () => {
+      vi.spyOn(memberRepository, 'findByName').mockResolvedValue(null)
+      vi.spyOn(memberRepository, 'findByEmail').mockResolvedValue(null)
+      vi.spyOn(memberRepository, 'create').mockResolvedValue({
+        id: 'm2',
+        firstName: 'New',
+        lastName: 'Person',
+        email: 'new@example.com',
+        statusId: null,
+        groups: [],
+      })
+
+      const result = await memberService.createMember(
+        { firstName: 'New', lastName: 'Person', email: 'new@example.com' },
+        'actor-1',
+      )
+
+      expect(memberRepository.create).toHaveBeenCalled()
+      expect(result.firstName).toBe('New')
+    })
+  })
 })
