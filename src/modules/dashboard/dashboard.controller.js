@@ -21,4 +21,15 @@ const getRecentActivity = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, activity, 'Recent activity retrieved')
 })
 
-module.exports = { getStats, getMemberBreakdown, getFinanceSummary, getRecentActivity }
+const getAttendanceSummary = asyncHandler(async (req, res) => {
+  const summary = await dashboardService.getAttendanceSummary(req.query.range)
+  return ApiResponse.success(res, summary, 'Attendance summary retrieved')
+})
+
+module.exports = {
+  getStats,
+  getMemberBreakdown,
+  getFinanceSummary,
+  getRecentActivity,
+  getAttendanceSummary,
+}

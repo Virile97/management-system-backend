@@ -50,6 +50,25 @@ function findRecentActivityLogs(limit) {
   })
 }
 
+function findAttendancesInRange(from, to) {
+  return prisma.attendance.findMany({
+    where: {
+      date: {
+        gte: from,
+        lte: to,
+      },
+    },
+    select: {
+      memberId: true,
+      date: true,
+      morningIn: true,
+      morningOut: true,
+      afternoonIn: true,
+      afternoonOut: true,
+    },
+  })
+}
+
 module.exports = {
   countMembers,
   countMembersByStatusName,
@@ -57,4 +76,5 @@ module.exports = {
   sumTransactionsByTypeName,
   sumTransactionsGroupedByTypeInRange,
   findRecentActivityLogs,
+  findAttendancesInRange,
 }

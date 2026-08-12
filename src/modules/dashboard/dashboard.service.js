@@ -132,10 +132,115 @@ async function getRecentActivity(limit) {
   return logs.map(toActivityItem)
 }
 
+function parseRangeWeeks(range) {
+  return parseInt(range, 10)
+}
+
+function toUtcDateOnly(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+// Week buckets start Monday to match the dashboard chart labels (Jul 6, Jul 13, …).
+function startOfWeekMondayUtc(date) {
+  const day = toUtcDateOnly(date)
+  const weekday = day.getUTCDay()
+  const diff = weekday === 0 ? -6 : 1 - weekday
+  day.setUTCDate(day.getUTCDate() + diff)
+  return day
+}
+
+function addUtcDays(date, days) {
+  const result = new Date(date)
+  result.setUTCDate(result.getUTCDate() + days)
+  return result
+}
+
+function dateKey(date) {
+  const value = toUtcDateOnly(date)
+  return `${value.getUTCFullYear()}-${value.getUTCMonth()}-${value.getUTCDate()}`
+}
+
+function weekKey(date) {
+  return dateKey(startOfWeekMondayUtc(date))
+}
+
+function isPresent(attendance) {
+  return Boolean(
+    attendance.morningIn ||
+      attendance.morningOut ||
+      attendance.afternoonIn ||
+      attendance.afternoonOut,
+  )
+}
+
+function buildEmptyWeekBuckets(weeks) {
+  const buckets = new Map()
+  const currentWeekStart = startOfWeekMondayUtc(new Date())
+
+  for (let i = weeks - 1; i >= 0; i -= 1) {
+    const weekStart = addUtcDays(currentWeekStart, -7 * i)
+    const key = dateKey(weekStart)
+    buckets.set(key, {
+      key,
+      date: weekStart,
+      label: weekStart.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }),
+      percentage: 0,
+      _dailyPresent: new Map(),
+    })
+  }
+
+  return buckets
+}
+
+async function getAttendanceSummary(range) {
+  const weeks = parseRangeWeeks(range)
+  const buckets = buildEmptyWeekBuckets(weeks)
+  const rangeStart = buckets.values().next().value.date
+  const rangeEnd = addUtcDays(startOfWeekMondayUtc(new Date()), 6)
+
+  const [totalMembers, attendances] = await Promise.all([
+    dashboardRepository.countMembers(),
+    dashboardRepository.findAttendancesInRange(rangeStart, rangeEnd),
+  ])
+
+  for (const row of attendances) {
+    if (!isPresent(row)) continue
+
+    const bucket = buckets.get(weekKey(row.date))
+    if (!bucket) continue
+
+    const day = dateKey(row.date)
+    const presentSet = bucket._dailyPresent.get(day) ?? new Set()
+    presentSet.add(row.memberId)
+    bucket._dailyPresent.set(day, presentSet)
+  }
+
+  return Array.from(buckets.values()).map(({ key: _key, _dailyPresent, ...bucket }) => {
+    if (!totalMembers || _dailyPresent.size === 0) {
+      return { ...bucket, percentage: 0 }
+    }
+
+    let rateSum = 0
+    for (const presentSet of _dailyPresent.values()) {
+      rateSum += (presentSet.size / totalMembers) * 100
+    }
+
+    return {
+      ...bucket,
+      percentage: Math.round((rateSum / _dailyPresent.size) * 10) / 10,
+    }
+  })
+}
+
 module.exports = {
   getStats,
   getMemberBreakdown,
   getFinanceSummary,
   getRecentActivity,
+  getAttendanceSummary,
   _clearStatsCache: statsCache.clear,
 }

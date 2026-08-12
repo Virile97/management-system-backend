@@ -20,6 +20,13 @@ function toDateOnly(date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()))
 }
 
+function buildDateRange(from, to) {
+  return {
+    gte: toDateOnly(from),
+    lte: toDateOnly(to),
+  }
+}
+
 function buildMemberWhere({ search, level }) {
   const where = {}
 
@@ -38,7 +45,7 @@ function buildMemberWhere({ search, level }) {
   return where
 }
 
-function findMembers({ skip, limit, search, level }) {
+function findMembers({ skip, limit, search, level } = {}) {
   return prisma.member.findMany({
     where: buildMemberWhere({ search, level }),
     skip,
@@ -48,24 +55,65 @@ function findMembers({ skip, limit, search, level }) {
   })
 }
 
-function countMembers({ search, level }) {
+function countMembers({ search, level } = {}) {
   return prisma.member.count({ where: buildMemberWhere({ search, level }) })
 }
 
-function findAttendancesByMemberIds(memberIds, date) {
+// All matching members, but those with attendance in [from, to] sort above absents.
+// Name order is preserved within each group. Pagination is applied after sorting.
+async function findMembersPrioritizedByAttendance({ skip, limit, search, level, from, to }) {
+  const where = buildMemberWhere({ search, level })
+
+  const [candidates, attendedRows] = await Promise.all([
+    prisma.member.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    }),
+    prisma.attendance.findMany({
+      where: {
+        date: buildDateRange(from, to),
+        member: where,
+      },
+      distinct: ['memberId'],
+      select: { memberId: true },
+    }),
+  ])
+
+  const attendedIds = new Set(attendedRows.map((row) => row.memberId))
+  const sortedIds = [
+    ...candidates.filter((member) => attendedIds.has(member.id)).map((member) => member.id),
+    ...candidates.filter((member) => !attendedIds.has(member.id)).map((member) => member.id),
+  ]
+  const pageIds = sortedIds.slice(skip, skip + limit)
+
+  if (pageIds.length === 0) return []
+
+  const members = await prisma.member.findMany({
+    where: { id: { in: pageIds } },
+    select: memberAttendanceSelect,
+  })
+  const byId = new Map(members.map((member) => [member.id, member]))
+
+  return pageIds.map((id) => byId.get(id)).filter(Boolean)
+}
+
+function findAttendancesByMemberIds(memberIds, from, to) {
   return prisma.attendance.findMany({
     where: {
       memberId: { in: memberIds },
-      date: toDateOnly(date),
+      date: buildDateRange(from, to),
     },
+    orderBy: { date: 'asc' },
   })
 }
 
-function findAllAttendancesForDate(date) {
+function findAllAttendancesInRange(from, to) {
   return prisma.attendance.findMany({
-    where: { date: toDateOnly(date) },
+    where: { date: buildDateRange(from, to) },
     select: {
       memberId: true,
+      date: true,
       morningIn: true,
       morningOut: true,
       afternoonIn: true,
@@ -77,6 +125,7 @@ function findAllAttendancesForDate(date) {
 function countMembersGroupedByLevel() {
   return prisma.member.findMany({
     select: {
+      id: true,
       groups: {
         select: { levelId: true },
         take: 1,
@@ -138,9 +187,10 @@ function memberExists(id) {
 
 module.exports = {
   findMembers,
+  findMembersPrioritizedByAttendance,
   countMembers,
   findAttendancesByMemberIds,
-  findAllAttendancesForDate,
+  findAllAttendancesInRange,
   countMembersGroupedByLevel,
   findAllLevels,
   findByMemberAndDate,

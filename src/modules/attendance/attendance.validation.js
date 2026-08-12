@@ -1,13 +1,19 @@
 const { z } = require('zod')
 
 const listAttendanceSchema = z.object({
-  query: z.object({
-    date: z.coerce.date({ required_error: 'date is required' }),
-    page: z.coerce.number().int().positive().optional(),
-    limit: z.coerce.number().int().positive().optional(),
-    search: z.string().min(1).optional(),
-    level: z.string().min(1).optional(),
-  }),
+  query: z
+    .object({
+      from: z.coerce.date({ required_error: 'from is required' }),
+      to: z.coerce.date({ required_error: 'to is required' }),
+      page: z.coerce.number().int().positive().optional(),
+      limit: z.coerce.number().int().positive().optional(),
+      search: z.string().min(1).optional(),
+      level: z.string().min(1).optional(),
+    })
+    .refine((data) => data.from <= data.to, {
+      message: 'from must be on or before to',
+      path: ['from'],
+    }),
 })
 
 const upsertAttendanceSchema = z.object({

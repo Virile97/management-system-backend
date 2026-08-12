@@ -220,4 +220,83 @@ describe('dashboard.service', () => {
       expect(activity).toEqual([])
     })
   })
+
+  describe('getAttendanceSummary', () => {
+    it('returns weekly attendance percentages for the requested range', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(Date.UTC(2026, 7, 12, 12, 0, 0)))
+
+      vi.spyOn(dashboardRepository, 'countMembers').mockResolvedValue(100)
+      vi.spyOn(dashboardRepository, 'findAttendancesInRange').mockResolvedValue([
+        ...Array.from({ length: 90 }, (_, i) => ({
+          memberId: `m${i}`,
+          date: new Date(Date.UTC(2026, 7, 11)),
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        })),
+        ...Array.from({ length: 80 }, (_, i) => ({
+          memberId: `p${i}`,
+          date: new Date(Date.UTC(2026, 7, 4)),
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        })),
+      ])
+
+      const summary = await dashboardService.getAttendanceSummary('5w')
+
+      expect(summary).toHaveLength(5)
+      expect(summary[0]).toMatchObject({ label: 'Jul 13', percentage: 0 })
+      expect(summary[3]).toMatchObject({ label: 'Aug 3', percentage: 80 })
+      expect(summary[4]).toMatchObject({ label: 'Aug 10', percentage: 90 })
+      expect(summary[4]).not.toHaveProperty('key')
+      expect(summary[4]).not.toHaveProperty('_dailyPresent')
+
+      vi.useRealTimers()
+    })
+
+    it('averages daily rates within a week', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(Date.UTC(2026, 7, 12, 12, 0, 0)))
+
+      vi.spyOn(dashboardRepository, 'countMembers').mockResolvedValue(100)
+      vi.spyOn(dashboardRepository, 'findAttendancesInRange').mockResolvedValue([
+        {
+          memberId: 'm1',
+          date: new Date(Date.UTC(2026, 7, 10)),
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        },
+        {
+          memberId: 'm1',
+          date: new Date(Date.UTC(2026, 7, 11)),
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        },
+        {
+          memberId: 'm2',
+          date: new Date(Date.UTC(2026, 7, 11)),
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        },
+      ])
+
+      const summary = await dashboardService.getAttendanceSummary('1w')
+
+      // Day1: 1%, Day2: 2% → average 1.5
+      expect(summary).toHaveLength(1)
+      expect(summary[0].percentage).toBe(1.5)
+
+      vi.useRealTimers()
+    })
+  })
 })

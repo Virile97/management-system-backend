@@ -77,10 +77,11 @@ describe('attendance.service', () => {
   })
 
   describe('listAttendance', () => {
-    it('returns one attendance object per member for the selected day', async () => {
-      const date = new Date('2026-08-11')
+    it('returns all members with present members sorted before absents when range is set', async () => {
+      const from = new Date('2026-08-12')
+      const to = new Date('2026-08-12')
 
-      vi.spyOn(attendanceRepository, 'findMembers').mockResolvedValue([
+      vi.spyOn(attendanceRepository, 'findMembersPrioritizedByAttendance').mockResolvedValue([
         {
           id: 'm1',
           firstName: 'Pastor',
@@ -103,16 +104,17 @@ describe('attendance.service', () => {
         {
           id: 'a1',
           memberId: 'm1',
-          date,
-          morningIn: new Date('2026-08-11T08:00:00.000Z'),
-          morningOut: new Date('2026-08-11T12:00:00.000Z'),
-          afternoonIn: new Date('2026-08-11T13:00:00.000Z'),
-          afternoonOut: new Date('2026-08-11T17:00:00.000Z'),
+          date: from,
+          morningIn: new Date('2026-08-12T08:00:00.000Z'),
+          morningOut: new Date('2026-08-12T12:00:00.000Z'),
+          afternoonIn: new Date('2026-08-12T13:00:00.000Z'),
+          afternoonOut: new Date('2026-08-12T17:00:00.000Z'),
         },
       ])
-      vi.spyOn(attendanceRepository, 'findAllAttendancesForDate').mockResolvedValue([
+      vi.spyOn(attendanceRepository, 'findAllAttendancesInRange').mockResolvedValue([
         {
           memberId: 'm1',
+          date: from,
           morningIn: new Date(),
           morningOut: new Date(),
           afternoonIn: new Date(),
@@ -120,27 +122,94 @@ describe('attendance.service', () => {
         },
       ])
       vi.spyOn(attendanceRepository, 'countMembersGroupedByLevel').mockResolvedValue([
-        { groups: [{ levelId: 'l1' }] },
-        { groups: [{ levelId: 'l1' }] },
-        { groups: [] },
+        { id: 'm1', groups: [{ levelId: 'l1' }] },
+        { id: 'm2', groups: [{ levelId: 'l1' }] },
+        { id: 'm3', groups: [] },
       ])
       vi.spyOn(attendanceRepository, 'findAllLevels').mockResolvedValue([
         { id: 'l1', name: 'Men' },
         { id: 'l2', name: 'Ladies' },
       ])
 
-      const result = await attendanceService.listAttendance({ date })
+      const result = await attendanceService.listAttendance({ from, to })
 
-      expect(result.date).toEqual(new Date(Date.UTC(2026, 7, 11)))
-      expect(result.summary).toMatchObject({
-        totalMembers: 3,
-        present: 1,
-        fullDay: 1,
-        absent: 2,
-      })
+      expect(attendanceRepository.findMembersPrioritizedByAttendance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: new Date(Date.UTC(2026, 7, 12)),
+          to: new Date(Date.UTC(2026, 7, 12)),
+        }),
+      )
+      expect(result.items).toHaveLength(2)
       expect(result.items[0].attendance.status).toBe('full_day')
       expect(result.items[1].attendance.status).toBe('absent')
-      expect(result.items[1].attendance.morningIn).toBeNull()
+      expect(result.levels[0]).toEqual({ id: null, name: 'All Members', count: 3 })
+      expect(result.meta.total).toBe(2)
+    })
+
+    it('returns attendances arrays for a multi-day range', async () => {
+      const from = new Date('2026-08-11')
+      const to = new Date('2026-08-12')
+
+      vi.spyOn(attendanceRepository, 'findMembersPrioritizedByAttendance').mockResolvedValue([
+        {
+          id: 'm1',
+          firstName: 'Pastor',
+          middleName: null,
+          lastName: 'Admin',
+          groups: [{ level: { id: 'l1', name: 'Men' } }],
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'countMembers').mockResolvedValue(1)
+      vi.spyOn(attendanceRepository, 'findAttendancesByMemberIds').mockResolvedValue([
+        {
+          id: 'a1',
+          memberId: 'm1',
+          date: from,
+          morningIn: new Date('2026-08-11T08:00:00.000Z'),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        },
+        {
+          id: 'a2',
+          memberId: 'm1',
+          date: to,
+          morningIn: new Date('2026-08-12T08:00:00.000Z'),
+          morningOut: null,
+          afternoonIn: new Date('2026-08-12T13:00:00.000Z'),
+          afternoonOut: null,
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'findAllAttendancesInRange').mockResolvedValue([
+        {
+          memberId: 'm1',
+          date: from,
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        },
+        {
+          memberId: 'm1',
+          date: to,
+          morningIn: new Date(),
+          morningOut: null,
+          afternoonIn: new Date(),
+          afternoonOut: null,
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'countMembersGroupedByLevel').mockResolvedValue([
+        { id: 'm1', groups: [{ levelId: 'l1' }] },
+      ])
+      vi.spyOn(attendanceRepository, 'findAllLevels').mockResolvedValue([
+        { id: 'l1', name: 'Men' },
+      ])
+
+      const result = await attendanceService.listAttendance({ from, to })
+
+      expect(result.items[0].attendances).toHaveLength(2)
+      expect(result.items[0].attendance).toBeUndefined()
+      expect(result.summary.fullDay).toBe(1)
     })
   })
 })

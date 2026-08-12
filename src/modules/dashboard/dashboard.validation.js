@@ -16,4 +16,14 @@ const recentActivitySchema = z.object({
   }),
 })
 
-module.exports = { rangeSchema, recentActivitySchema }
+const attendanceRangeSchema = z.object({
+  query: z.object({
+    range: z
+      .string()
+      .regex(/^\d+w$/, "range must look like '5w'")
+      .optional()
+      .default('5w'),
+  }),
+})
+
+module.exports = { rangeSchema, recentActivitySchema, attendanceRangeSchema }

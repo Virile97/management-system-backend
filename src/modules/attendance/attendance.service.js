@@ -26,10 +26,21 @@ function toMemberName(member) {
   return [member.firstName, member.middleName, member.lastName].filter(Boolean).join(' ')
 }
 
-function toAttendanceItem(member, attendance) {
-  const level = member.groups[0]?.level ?? null
-
+function toAttendanceDay(attendance) {
   return {
+    id: attendance?.id ?? null,
+    date: attendance?.date ?? null,
+    morningIn: attendance?.morningIn ?? null,
+    morningOut: attendance?.morningOut ?? null,
+    afternoonIn: attendance?.afternoonIn ?? null,
+    afternoonOut: attendance?.afternoonOut ?? null,
+    status: deriveStatus(attendance),
+  }
+}
+
+function toAttendanceItem(member, attendances, { singleDay }) {
+  const level = member.groups[0]?.level ?? null
+  const base = {
     member: {
       id: member.id,
       firstName: member.firstName,
@@ -38,34 +49,86 @@ function toAttendanceItem(member, attendance) {
       name: toMemberName(member),
       level,
     },
-    // One day only — no record means empty/reset fields for that date.
-    attendance: {
-      id: attendance?.id ?? null,
-      date: attendance?.date ?? null,
-      morningIn: attendance?.morningIn ?? null,
-      morningOut: attendance?.morningOut ?? null,
-      afternoonIn: attendance?.afternoonIn ?? null,
-      afternoonOut: attendance?.afternoonOut ?? null,
-      status: deriveStatus(attendance),
-    },
   }
+
+  // Same-day range keeps the per-day grid shape (`attendance`).
+  // Multi-day ranges return every day in range under `attendances`.
+  if (singleDay) {
+    return { ...base, attendance: toAttendanceDay(attendances[0]) }
+  }
+
+  return { ...base, attendances: attendances.map(toAttendanceDay) }
 }
 
-function buildSummary(totalMembers, attendances) {
+// Rolls a member's days in the range into one summary bucket so the cards
+// still count people, not member-days.
+function deriveMemberRangeStatus(attendances) {
+  if (!attendances.length) return 'absent'
+
+  const statuses = attendances.map(deriveStatus).filter((status) => status !== 'absent')
+  if (statuses.length === 0) return 'absent'
+  if (statuses.includes('full_day')) return 'full_day'
+  if (statuses.includes('morning_only') && statuses.includes('afternoon_only')) return 'partial'
+  if (statuses.every((status) => status === 'morning_only')) return 'morning_only'
+  if (statuses.every((status) => status === 'afternoon_only')) return 'afternoon_only'
+  return 'partial'
+}
+
+function buildSummary(totalMembers, attendances, { singleDay }) {
+  if (singleDay) {
+    let fullDay = 0
+    let morningOnly = 0
+    let afternoonOnly = 0
+
+    for (const row of attendances) {
+      const status = deriveStatus(row)
+      if (status === 'full_day') fullDay += 1
+      else if (status === 'morning_only') morningOnly += 1
+      else if (status === 'afternoon_only') afternoonOnly += 1
+    }
+
+    const present = fullDay + morningOnly + afternoonOnly
+    const absent = Math.max(totalMembers - present, 0)
+    const partial = morningOnly + afternoonOnly
+    const attendanceRate = totalMembers
+      ? Math.round((present / totalMembers) * 1000) / 10
+      : 0
+
+    return {
+      totalMembers,
+      present,
+      attendanceRate,
+      fullDay,
+      partial,
+      morningOnly,
+      afternoonOnly,
+      absent,
+    }
+  }
+
+  const byMember = new Map()
+  for (const row of attendances) {
+    const list = byMember.get(row.memberId) ?? []
+    list.push(row)
+    byMember.set(row.memberId, list)
+  }
+
   let fullDay = 0
   let morningOnly = 0
   let afternoonOnly = 0
+  let mixedPartial = 0
 
-  for (const row of attendances) {
-    const status = deriveStatus(row)
+  for (const rows of byMember.values()) {
+    const status = deriveMemberRangeStatus(rows)
     if (status === 'full_day') fullDay += 1
     else if (status === 'morning_only') morningOnly += 1
     else if (status === 'afternoon_only') afternoonOnly += 1
+    else if (status === 'partial') mixedPartial += 1
   }
 
-  const present = fullDay + morningOnly + afternoonOnly
+  const present = fullDay + morningOnly + afternoonOnly + mixedPartial
   const absent = Math.max(totalMembers - present, 0)
-  const partial = morningOnly + afternoonOnly
+  const partial = morningOnly + afternoonOnly + mixedPartial
   const attendanceRate = totalMembers
     ? Math.round((present / totalMembers) * 1000) / 10
     : 0
@@ -84,23 +147,46 @@ function buildSummary(totalMembers, attendances) {
 
 async function listAttendance(query) {
   const { page, limit, skip } = getPagination(query)
-  const { date, search, level } = query
+  const { from, to, search, level } = query
+  const fromDay = attendanceRepository.toDateOnly(from)
+  const toDay = attendanceRepository.toDateOnly(to)
+  const singleDay = fromDay.getTime() === toDay.getTime()
+  // from/to is the range filter — return everyone, present first then absent.
+  const prioritizeAttendance = Boolean(from && to)
 
   const [members, total, allMemberCount, attendancesForSummary, levelRows, levels] =
     await Promise.all([
-      attendanceRepository.findMembers({ skip, limit, search, level }),
+      prioritizeAttendance
+        ? attendanceRepository.findMembersPrioritizedByAttendance({
+            skip,
+            limit,
+            search,
+            level,
+            from: fromDay,
+            to: toDay,
+          })
+        : attendanceRepository.findMembers({ skip, limit, search, level }),
       attendanceRepository.countMembers({ search, level }),
       attendanceRepository.countMembers({}),
-      attendanceRepository.findAllAttendancesForDate(date),
+      attendanceRepository.findAllAttendancesInRange(fromDay, toDay),
       attendanceRepository.countMembersGroupedByLevel(),
       attendanceRepository.findAllLevels(),
     ])
 
-  const pageAttendances = await attendanceRepository.findAttendancesByMemberIds(
-    members.map((m) => m.id),
-    date,
-  )
-  const attendanceByMemberId = new Map(pageAttendances.map((row) => [row.memberId, row]))
+  const pageAttendances = members.length
+    ? await attendanceRepository.findAttendancesByMemberIds(
+        members.map((m) => m.id),
+        fromDay,
+        toDay,
+      )
+    : []
+
+  const attendancesByMemberId = new Map()
+  for (const row of pageAttendances) {
+    const list = attendancesByMemberId.get(row.memberId) ?? []
+    list.push(row)
+    attendancesByMemberId.set(row.memberId, list)
+  }
 
   const levelCountMap = new Map()
   for (const member of levelRows) {
@@ -115,11 +201,11 @@ async function listAttendance(query) {
   }))
 
   return {
-    date: attendanceRepository.toDateOnly(date),
-    summary: buildSummary(allMemberCount, attendancesForSummary),
+    period: { from: fromDay, to: toDay },
+    summary: buildSummary(allMemberCount, attendancesForSummary, { singleDay }),
     levels: [{ id: null, name: 'All Members', count: allMemberCount }, ...levelCounts],
     items: members.map((member) =>
-      toAttendanceItem(member, attendanceByMemberId.get(member.id)),
+      toAttendanceItem(member, attendancesByMemberId.get(member.id) ?? [], { singleDay }),
     ),
     meta: buildMeta({ page, limit, total }),
   }
