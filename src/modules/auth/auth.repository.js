@@ -14,4 +14,11 @@ function createUser({ email, password, name }) {
   })
 }
 
-module.exports = { findByEmail, findById, createUser }
+function updatePassword(id, password) {
+  return prisma.user.update({
+    where: { id },
+    data: { password },
+  })
+}
+
+module.exports = { findByEmail, findById, createUser, updatePassword }

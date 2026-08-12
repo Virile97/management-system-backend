@@ -23,6 +23,17 @@ const login = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, result, 'Logged in successfully')
 })
 
+const verifyPasswordSetup = asyncHandler(async (req, res) => {
+  const data = await authService.verifyPasswordSetupToken(req.query.token)
+  return ApiResponse.success(res, data, 'Password setup link is valid')
+})
+
+const setPassword = asyncHandler(async (req, res) => {
+  const { refreshToken, ...result } = await authService.setPassword(req.body)
+  setRefreshTokenCookie(res, refreshToken)
+  return ApiResponse.success(res, result, 'Password set successfully')
+})
+
 const refresh = asyncHandler(async (req, res) => {
   const { refreshToken, ...result } = await authService.refresh(req.cookies[COOKIE_NAME])
   setRefreshTokenCookie(res, refreshToken)
@@ -45,4 +56,14 @@ const logoutAll = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, { loggedOut: true }, 'Logged out of all sessions')
 })
 
-module.exports = { getPublicKey, register, login, refresh, me, logout, logoutAll }
+module.exports = {
+  getPublicKey,
+  register,
+  login,
+  verifyPasswordSetup,
+  setPassword,
+  refresh,
+  me,
+  logout,
+  logoutAll,
+}

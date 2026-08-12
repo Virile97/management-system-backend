@@ -25,6 +25,12 @@ const envSchema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
+
+  RESEND_API_KEY: z.string().optional().default(''),
+  RESEND_FROM: z.string().optional().default(''),
+  APP_NAME: z.string().optional().default('Management System'),
+
+  PASSWORD_SETUP_TOKEN_EXPIRES_IN_HOURS: z.coerce.number().default(48),
 })
 
 const parsed = envSchema.safeParse(process.env)

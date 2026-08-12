@@ -16,6 +16,16 @@ function findById(id) {
   return prisma.user.findUnique({ where: { id } })
 }
 
+function findByEmail(email) {
+  return prisma.user.findUnique({ where: { email } })
+}
+
+function create({ email, password, name, contact, role }) {
+  return prisma.user.create({
+    data: { email, password, name, contact, role },
+  })
+}
+
 function updateById(id, data) {
   return prisma.user.update({ where: { id }, data })
 }
@@ -24,4 +34,4 @@ function deleteById(id) {
   return prisma.user.delete({ where: { id } })
 }
 
-module.exports = { findMany, count, findById, updateById, deleteById }
+module.exports = { findMany, count, findById, findByEmail, create, updateById, deleteById }

@@ -20,18 +20,20 @@ enum Gender {
 }
 
 model User {
-  id                   String         @id @default(uuid())
-  email                String         @unique
-  password             String
+  id                   String               @id @default(uuid())
+  email                String               @unique
+  password             String?
   name                 String?
-  role                 Role           @default(USER)
-  membersAdded         Member[]       @relation("MemberAddedBy")
-  transactionsRecorded Transaction[]  @relation("TransactionRecordedBy")
-  attendancesRecorded  Attendance[]   @relation("AttendanceRecordedBy")
+  contact              String?
+  role                 Role                 @default(USER)
+  membersAdded         Member[]             @relation("MemberAddedBy")
+  transactionsRecorded Transaction[]        @relation("TransactionRecordedBy")
+  attendancesRecorded  Attendance[]         @relation("AttendanceRecordedBy")
   activityLogs         ActivityLog[]
   refreshTokens        RefreshToken[]
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  passwordSetupTokens  PasswordSetupToken[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   @@map("users")
 }
@@ -49,6 +51,20 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+model PasswordSetupToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_setup_tokens")
 }
 
 enum ActivityAction {
