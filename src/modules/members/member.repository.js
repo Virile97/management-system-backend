@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 
 const memberIncludes = {
@@ -43,6 +44,37 @@ function buildWhere({ search, status, from, to }) {
   return where
 }
 
+function buildMemberFilterSql({ search, status, from, to }) {
+  const conditions = [Prisma.sql`TRUE`]
+
+  if (search) {
+    const pattern = `%${search}%`
+    conditions.push(Prisma.sql`(
+      COALESCE(m.email, '') ILIKE ${pattern}
+      OR m."firstName" ILIKE ${pattern}
+      OR COALESCE(m."middleName", '') ILIKE ${pattern}
+      OR m."lastName" ILIKE ${pattern}
+    )`)
+  }
+
+  if (status) {
+    conditions.push(Prisma.sql`EXISTS (
+      SELECT 1 FROM statuses s
+      WHERE s.id = m."statusId" AND s.name = ${status}
+    )`)
+  }
+
+  if (from) {
+    conditions.push(Prisma.sql`m."createdAt" >= ${from}`)
+  }
+
+  if (to) {
+    conditions.push(Prisma.sql`m."createdAt" <= ${endOfDay(to)}`)
+  }
+
+  return Prisma.join(conditions, ' AND ')
+}
+
 function findMany({ skip, limit, search, status, from, to }) {
   return prisma.member.findMany({
     where: buildWhere({ search, status, from, to }),
@@ -57,12 +89,58 @@ function count({ search, status, from, to }) {
   return prisma.member.count({ where: buildWhere({ search, status, from, to }) })
 }
 
-function countGroupedByStatus({ search, status, from, to }) {
-  return prisma.member.groupBy({
-    by: ['statusId'],
-    where: buildWhere({ search, status, from, to }),
-    _count: { _all: true },
-  })
+/**
+ * Status breakdown aggregated in SQL — same shape the service previously built in JS.
+ * @returns {Promise<{ total: number, breakdown: Array<{ status: string, count: number, percentage: number }> }>}
+ */
+async function summarizeBreakdownByStatus({ search, status, from, to } = {}) {
+  const whereSql = buildMemberFilterSql({ search, status, from, to })
+
+  const rows = await prisma.$queryRaw`
+    WITH filtered AS (
+      SELECT
+        CASE
+          WHEN m."statusId" IS NULL THEN 'Unassigned'
+          WHEN s.name IS NULL THEN 'Unknown'
+          ELSE s.name
+        END AS status
+      FROM members m
+      LEFT JOIN statuses s ON s.id = m."statusId"
+      WHERE ${whereSql}
+    ),
+    counts AS (
+      SELECT status, COUNT(*)::int AS count
+      FROM filtered
+      GROUP BY status
+    ),
+    totals AS (
+      SELECT COALESCE(SUM(count), 0)::int AS total FROM counts
+    )
+    SELECT
+      c.status,
+      c.count,
+      CASE
+        WHEN t.total = 0 THEN 0
+        ELSE ROUND((c.count::numeric / t.total) * 1000) / 10
+      END AS percentage,
+      t.total
+    FROM counts c
+    CROSS JOIN totals t
+    ORDER BY c.count DESC, c.status ASC
+  `
+
+  if (rows.length === 0) {
+    return { total: 0, breakdown: [] }
+  }
+
+  return {
+    total: Number(rows[0].total),
+    breakdown: rows.map((row) => ({
+      status: row.status,
+      count: Number(row.count),
+      percentage: Number(row.percentage),
+    })),
+  }
 }
 
 function findById(id) {
@@ -72,21 +150,29 @@ function findById(id) {
   })
 }
 
-function findAttendancesByMemberId(memberId, { skip, limit } = {}) {
-  return prisma.attendance.findMany({
-    where: { memberId },
-    orderBy: { date: 'desc' },
-    ...(skip === undefined ? {} : { skip }),
-    ...(limit === undefined ? {} : { take: limit }),
-    select: {
-      id: true,
-      date: true,
-      morningIn: true,
-      morningOut: true,
-      afternoonIn: true,
-      afternoonOut: true,
-    },
-  })
+async function findAttendancesByMemberId(memberId, { skip = 0, limit = 20 } = {}) {
+  // Embedded on member detail; paginated. Status derived in SQL.
+  return prisma.$queryRaw`
+    SELECT
+      a.id,
+      a.date,
+      a."morningIn",
+      a."morningOut",
+      a."afternoonIn",
+      a."afternoonOut",
+      CASE
+        WHEN (a."morningIn" IS NOT NULL OR a."morningOut" IS NOT NULL)
+         AND (a."afternoonIn" IS NOT NULL OR a."afternoonOut" IS NOT NULL) THEN 'full_day'
+        WHEN (a."morningIn" IS NOT NULL OR a."morningOut" IS NOT NULL) THEN 'morning_only'
+        WHEN (a."afternoonIn" IS NOT NULL OR a."afternoonOut" IS NOT NULL) THEN 'afternoon_only'
+        ELSE 'absent'
+      END AS status
+    FROM attendances a
+    WHERE a."memberId" = ${memberId}
+    ORDER BY a.date DESC
+    LIMIT ${limit}
+    OFFSET ${skip}
+  `
 }
 
 function countAttendancesByMemberId(memberId) {
@@ -205,13 +291,19 @@ function sumOfferingsByMemberId(memberId, range = {}, offeringTypeIds) {
 
 // Every offering type this member has ever given to, ignoring the period and
 // type filters so the filter options stay stable as the user switches tabs.
-function findOfferingTypesByMemberId(memberId) {
-  return prisma.transactionItem.findMany({
-    where: { transaction: { memberId, type: { name: 'Income' } } },
-    distinct: ['offeringTypeId'],
-    select: { offeringType: { select: { id: true, name: true } } },
-    orderBy: { offeringType: { name: 'asc' } },
-  })
+async function findOfferingTypesByMemberId(memberId) {
+  const rows = await prisma.$queryRaw`
+    SELECT DISTINCT ot.id, ot.name
+    FROM transaction_items ti
+    INNER JOIN transactions t ON t.id = ti."transactionId"
+    INNER JOIN transaction_types tt ON tt.id = t."typeId"
+    INNER JOIN offering_types ot ON ot.id = ti."offeringTypeId"
+    WHERE t."memberId" = ${memberId}
+      AND tt.name = 'Income'
+    ORDER BY ot.name ASC
+  `
+
+  return rows.map((row) => ({ id: row.id, name: row.name }))
 }
 
 // levelId/lighthouseGroupId now live on member_groups, so they're applied to
@@ -297,10 +389,6 @@ function deleteManyByIds(ids) {
   return prisma.member.deleteMany({ where: { id: { in: ids } } })
 }
 
-function findAllStatuses() {
-  return prisma.status.findMany({ select: { id: true, name: true } })
-}
-
 async function findConfig() {
   const [statuses, levels, lighthouseGroups, groups] = await Promise.all([
     prisma.status.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -318,8 +406,7 @@ async function findConfig() {
 module.exports = {
   findMany,
   count,
-  countGroupedByStatus,
-  findAllStatuses,
+  summarizeBreakdownByStatus,
   findById,
   existsById,
   findByName,

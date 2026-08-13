@@ -85,14 +85,10 @@ describe('transaction.service', () => {
   })
 
   describe('getByOfferingType', () => {
-    it('sums amounts per offering type, sorted by total descending', async () => {
-      vi.spyOn(transactionRepository, 'sumGroupedByOfferingType').mockResolvedValue([
-        { offeringTypeId: 'o1', _sum: { amount: '400' } },
-        { offeringTypeId: 'o2', _sum: { amount: '2400' } },
-      ])
-      vi.spyOn(transactionRepository, 'findOfferingTypesByIds').mockResolvedValue([
-        { id: 'o1', name: 'Love' },
-        { id: 'o2', name: 'Tithes' },
+    it('returns SQL aggregated offering totals', async () => {
+      vi.spyOn(transactionRepository, 'sumByOfferingType').mockResolvedValue([
+        { offeringType: 'Tithes', total: 2400 },
+        { offeringType: 'Love', total: 400 },
       ])
 
       const breakdown = await transactionService.getByOfferingType()
@@ -104,19 +100,16 @@ describe('transaction.service', () => {
     })
 
     it('passes the offeringTypeId filter through to the repository', async () => {
-      vi.spyOn(transactionRepository, 'sumGroupedByOfferingType').mockResolvedValue([
-        { offeringTypeId: 'o1', _sum: { amount: '400' } },
-      ])
-      vi.spyOn(transactionRepository, 'findOfferingTypesByIds').mockResolvedValue([
-        { id: 'o1', name: 'Love' },
+      vi.spyOn(transactionRepository, 'sumByOfferingType').mockResolvedValue([
+        { offeringType: 'Love', total: 400 },
       ])
 
       await transactionService.getByOfferingType({ offeringTypeId: ['o1', 'o2'] })
 
-      expect(transactionRepository.sumGroupedByOfferingType).toHaveBeenCalledWith(
-        expect.any(Object),
-        ['o1', 'o2'],
-      )
+      expect(transactionRepository.sumByOfferingType).toHaveBeenCalledWith(expect.any(Object), [
+        'o1',
+        'o2',
+      ])
     })
   })
 
@@ -194,11 +187,22 @@ describe('transaction.service', () => {
   describe('getMonthlyTrend', () => {
     it('buckets by day when period is month', async () => {
       const now = new Date()
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-      vi.spyOn(transactionRepository, 'findAllForTrend').mockResolvedValue([
-        { amount: '100', createdAt: today, type: { name: 'Income' } },
-        { amount: '40', createdAt: today, type: { name: 'Expense' } },
+      vi.spyOn(transactionRepository, 'sumTrendGrouped').mockResolvedValue([
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          day: now.getDate(),
+          type: 'Income',
+          amount: 100,
+        },
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          day: now.getDate(),
+          type: 'Expense',
+          amount: 40,
+        },
       ])
 
       const trend = await transactionService.getMonthlyTrend({ period: 'month' })
@@ -207,15 +211,27 @@ describe('transaction.service', () => {
       expect(todayBucket.income).toBe(100)
       expect(todayBucket.expense).toBe(40)
       expect(todayBucket).not.toHaveProperty('key')
+      expect(transactionRepository.sumTrendGrouped).toHaveBeenCalledWith(
+        expect.objectContaining({ grain: 'day' }),
+      )
     })
 
     it('buckets by month when period is year', async () => {
       const now = new Date()
-      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15)
 
-      vi.spyOn(transactionRepository, 'findAllForTrend').mockResolvedValue([
-        { amount: '100', createdAt: thisMonth, type: { name: 'Income' } },
-        { amount: '40', createdAt: thisMonth, type: { name: 'Expense' } },
+      vi.spyOn(transactionRepository, 'sumTrendGrouped').mockResolvedValue([
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          type: 'Income',
+          amount: 100,
+        },
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          type: 'Expense',
+          amount: 40,
+        },
       ])
 
       const trend = await transactionService.getMonthlyTrend({ period: 'year' })
@@ -225,6 +241,9 @@ describe('transaction.service', () => {
       expect(currentBucket.income).toBe(100)
       expect(currentBucket.expense).toBe(40)
       expect(currentBucket).not.toHaveProperty('key')
+      expect(transactionRepository.sumTrendGrouped).toHaveBeenCalledWith(
+        expect.objectContaining({ grain: 'month' }),
+      )
     })
   })
 })

@@ -58,42 +58,33 @@ describe('dashboard.service', () => {
   })
 
   describe('getMemberBreakdown', () => {
-    it('computes total and per-status percentages', async () => {
-      vi.spyOn(dashboardRepository, 'countMembersGroupedByStatus').mockResolvedValue([
-        { name: 'Active', _count: { members: 289 } },
-        { name: 'Inactive', _count: { members: 41 } },
-        { name: 'Deceased', _count: { members: 17 } },
-      ])
+    it('returns the SQL aggregated breakdown shape', async () => {
+      vi.spyOn(dashboardRepository, 'summarizeMembersByStatus').mockResolvedValue({
+        total: 347,
+        breakdown: [
+          { status: 'Active', count: 289, percentage: 83.3 },
+          { status: 'Deceased', count: 17, percentage: 4.9 },
+          { status: 'Inactive', count: 41, percentage: 11.8 },
+        ],
+      })
 
       const breakdown = await dashboardService.getMemberBreakdown()
 
-      expect(breakdown.total).toBe(347)
-      expect(breakdown.breakdown).toEqual([
-        { status: 'Active', count: 289, percentage: 83.3 },
-        { status: 'Inactive', count: 41, percentage: 11.8 },
-        { status: 'Deceased', count: 17, percentage: 4.9 },
-      ])
-    })
-
-    it('includes statuses with zero members instead of omitting them', async () => {
-      vi.spyOn(dashboardRepository, 'countMembersGroupedByStatus').mockResolvedValue([
-        { name: 'Active', _count: { members: 0 } },
-        { name: 'Inactive', _count: { members: 0 } },
-        { name: 'Deceased', _count: { members: 0 } },
-      ])
-
-      const breakdown = await dashboardService.getMemberBreakdown()
-
-      expect(breakdown.total).toBe(0)
-      expect(breakdown.breakdown).toHaveLength(3)
-      for (const entry of breakdown.breakdown) {
-        expect(entry.count).toBe(0)
-        expect(entry.percentage).toBe(0)
-      }
+      expect(breakdown).toEqual({
+        total: 347,
+        breakdown: [
+          { status: 'Active', count: 289, percentage: 83.3 },
+          { status: 'Deceased', count: 17, percentage: 4.9 },
+          { status: 'Inactive', count: 41, percentage: 11.8 },
+        ],
+      })
     })
 
     it('returns an empty breakdown when no statuses exist', async () => {
-      vi.spyOn(dashboardRepository, 'countMembersGroupedByStatus').mockResolvedValue([])
+      vi.spyOn(dashboardRepository, 'summarizeMembersByStatus').mockResolvedValue({
+        total: 0,
+        breakdown: [],
+      })
 
       const breakdown = await dashboardService.getMemberBreakdown()
 
@@ -102,14 +93,22 @@ describe('dashboard.service', () => {
   })
 
   describe('getFinanceSummary', () => {
-    it('buckets income and expense transactions by month', async () => {
+    it('buckets income and expense totals by month', async () => {
       const now = new Date()
-      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15)
 
-      vi.spyOn(dashboardRepository, 'sumTransactionsGroupedByTypeInRange').mockResolvedValue([
-        { amount: '100', createdAt: thisMonth, type: { name: 'Income' } },
-        { amount: '40', createdAt: thisMonth, type: { name: 'Expense' } },
-        { amount: '25', createdAt: thisMonth, type: { name: 'Income' } },
+      vi.spyOn(dashboardRepository, 'sumTransactionsByMonthAndType').mockResolvedValue([
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          type: 'Income',
+          amount: 125,
+        },
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          type: 'Expense',
+          amount: 40,
+        },
       ])
 
       const summary = await dashboardService.getFinanceSummary('3m')
@@ -118,10 +117,11 @@ describe('dashboard.service', () => {
       const currentBucket = summary[summary.length - 1]
       expect(currentBucket.income).toBe(125)
       expect(currentBucket.expense).toBe(40)
+      expect(currentBucket).not.toHaveProperty('key')
     })
 
     it('produces zeroed buckets for every month in range when there is no data', async () => {
-      vi.spyOn(dashboardRepository, 'sumTransactionsGroupedByTypeInRange').mockResolvedValue([])
+      vi.spyOn(dashboardRepository, 'sumTransactionsByMonthAndType').mockResolvedValue([])
 
       const summary = await dashboardService.getFinanceSummary('6m')
 
@@ -133,12 +133,16 @@ describe('dashboard.service', () => {
       }
     })
 
-    it('ignores transactions that fall outside the requested range', async () => {
+    it('ignores monthly totals that fall outside the requested range buckets', async () => {
       const now = new Date()
-      const farPast = new Date(now.getFullYear() - 5, now.getMonth(), 1)
 
-      vi.spyOn(dashboardRepository, 'sumTransactionsGroupedByTypeInRange').mockResolvedValue([
-        { amount: '999', createdAt: farPast, type: { name: 'Income' } },
+      vi.spyOn(dashboardRepository, 'sumTransactionsByMonthAndType').mockResolvedValue([
+        {
+          year: now.getFullYear() - 5,
+          month: now.getMonth() + 1,
+          type: 'Income',
+          amount: 999,
+        },
       ])
 
       const summary = await dashboardService.getFinanceSummary('6m')
@@ -221,29 +225,79 @@ describe('dashboard.service', () => {
     })
   })
 
+  describe('getOverview', () => {
+    it('returns one object with all dashboard sections', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(Date.UTC(2026, 7, 12, 12, 0, 0)))
+
+      vi.spyOn(dashboardRepository, 'countMembers').mockResolvedValue(10)
+      vi.spyOn(dashboardRepository, 'countMembersByStatusName').mockImplementation((name) =>
+        Promise.resolve(name === 'Active' ? 8 : 2),
+      )
+      vi.spyOn(dashboardRepository, 'sumTransactionsByTypeName').mockResolvedValue({
+        _sum: { amount: '100' },
+      })
+      vi.spyOn(dashboardRepository, 'summarizeMembersByStatus').mockResolvedValue({
+        total: 10,
+        breakdown: [{ status: 'Active', count: 8, percentage: 80 }],
+      })
+      vi.spyOn(dashboardRepository, 'sumTransactionsByMonthAndType').mockResolvedValue([
+        { year: 2026, month: 8, type: 'Income', amount: 100 },
+      ])
+      vi.spyOn(dashboardRepository, 'countPresentMembersByDate').mockResolvedValue([
+        { date: new Date(Date.UTC(2026, 7, 11)), present: 9 },
+      ])
+      vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([
+        {
+          id: 'a1',
+          action: 'MEMBER_REGISTERED',
+          message: 'New member registered',
+          detail: 'Jane',
+          createdAt: new Date('2026-08-04T08:00:00Z'),
+          actor: null,
+        },
+      ])
+
+      const overview = await dashboardService.getOverview({
+        financeRange: '3m',
+        attendanceRange: '2w',
+        activityLimit: 3,
+      })
+
+      expect(Object.keys(overview).sort()).toEqual(
+        [
+          'attendanceSummary',
+          'financeSummary',
+          'memberBreakdown',
+          'recentActivity',
+          'stats',
+        ].sort(),
+      )
+      expect(overview.stats).toMatchObject({
+        totalMembers: 10,
+        activeMembers: 8,
+        monthlyIncome: 100,
+      })
+      expect(overview.memberBreakdown.total).toBe(10)
+      expect(overview.financeSummary).toHaveLength(3)
+      expect(overview.attendanceSummary).toHaveLength(2)
+      expect(overview.recentActivity).toHaveLength(1)
+      expect(dashboardRepository.findRecentActivityLogs).toHaveBeenCalledWith(3)
+      expect(dashboardRepository.sumTransactionsByMonthAndType).toHaveBeenCalled()
+
+      vi.useRealTimers()
+    })
+  })
+
   describe('getAttendanceSummary', () => {
     it('returns weekly attendance percentages for the requested range', async () => {
       vi.useFakeTimers()
       vi.setSystemTime(new Date(Date.UTC(2026, 7, 12, 12, 0, 0)))
 
       vi.spyOn(dashboardRepository, 'countMembers').mockResolvedValue(100)
-      vi.spyOn(dashboardRepository, 'findAttendancesInRange').mockResolvedValue([
-        ...Array.from({ length: 90 }, (_, i) => ({
-          memberId: `m${i}`,
-          date: new Date(Date.UTC(2026, 7, 11)),
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: null,
-          afternoonOut: null,
-        })),
-        ...Array.from({ length: 80 }, (_, i) => ({
-          memberId: `p${i}`,
-          date: new Date(Date.UTC(2026, 7, 4)),
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: null,
-          afternoonOut: null,
-        })),
+      vi.spyOn(dashboardRepository, 'countPresentMembersByDate').mockResolvedValue([
+        { date: new Date(Date.UTC(2026, 7, 11)), present: 90 },
+        { date: new Date(Date.UTC(2026, 7, 4)), present: 80 },
       ])
 
       const summary = await dashboardService.getAttendanceSummary('5w')
@@ -253,7 +307,7 @@ describe('dashboard.service', () => {
       expect(summary[3]).toMatchObject({ label: 'Aug 3', percentage: 80 })
       expect(summary[4]).toMatchObject({ label: 'Aug 10', percentage: 90 })
       expect(summary[4]).not.toHaveProperty('key')
-      expect(summary[4]).not.toHaveProperty('_dailyPresent')
+      expect(summary[4]).not.toHaveProperty('_dailyRates')
 
       vi.useRealTimers()
     })
@@ -263,31 +317,9 @@ describe('dashboard.service', () => {
       vi.setSystemTime(new Date(Date.UTC(2026, 7, 12, 12, 0, 0)))
 
       vi.spyOn(dashboardRepository, 'countMembers').mockResolvedValue(100)
-      vi.spyOn(dashboardRepository, 'findAttendancesInRange').mockResolvedValue([
-        {
-          memberId: 'm1',
-          date: new Date(Date.UTC(2026, 7, 10)),
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: null,
-          afternoonOut: null,
-        },
-        {
-          memberId: 'm1',
-          date: new Date(Date.UTC(2026, 7, 11)),
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: null,
-          afternoonOut: null,
-        },
-        {
-          memberId: 'm2',
-          date: new Date(Date.UTC(2026, 7, 11)),
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: null,
-          afternoonOut: null,
-        },
+      vi.spyOn(dashboardRepository, 'countPresentMembersByDate').mockResolvedValue([
+        { date: new Date(Date.UTC(2026, 7, 10)), present: 1 },
+        { date: new Date(Date.UTC(2026, 7, 11)), present: 2 },
       ])
 
       const summary = await dashboardService.getAttendanceSummary('1w')

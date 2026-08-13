@@ -115,34 +115,33 @@ describe('attendance.service', () => {
           afternoonOut: new Date('2026-08-12T17:00:00.000Z'),
         },
       ])
-      vi.spyOn(attendanceRepository, 'findAllAttendancesInRange').mockResolvedValue([
-        {
-          memberId: 'm1',
-          date: from,
-          morningIn: new Date(),
-          morningOut: new Date(),
-          afternoonIn: new Date(),
-          afternoonOut: new Date(),
-        },
-      ])
-      vi.spyOn(attendanceRepository, 'countMembersGroupedByLevel').mockResolvedValue([
-        { id: 'm1', groups: [{ levelId: 'l1' }] },
-        { id: 'm2', groups: [{ levelId: 'l1' }] },
-        { id: 'm3', groups: [] },
-      ])
-      vi.spyOn(attendanceRepository, 'findAllLevels').mockResolvedValue([
-        { id: 'l1', name: 'Men' },
-        { id: 'l2', name: 'Ladies' },
+      vi.spyOn(attendanceRepository, 'summarizeAttendanceInRange').mockResolvedValue({
+        fullDay: 1,
+        morningOnly: 0,
+        afternoonOnly: 0,
+        partialMixed: 0,
+      })
+      vi.spyOn(attendanceRepository, 'countMembersByLevel').mockResolvedValue([
+        { id: 'l1', name: 'Men', count: 2 },
+        { id: 'l2', name: 'Ladies', count: 0 },
       ])
 
       const result = await attendanceService.listAttendance({ from, to })
 
       expect(attendanceRepository.findMembers).toHaveBeenCalled()
       expect(prioritizeSpy).not.toHaveBeenCalled()
+      expect(attendanceRepository.summarizeAttendanceInRange).toHaveBeenCalled()
       expect(result.items).toHaveLength(2)
       expect(result.items[0].member.id).toBe('m2')
       expect(result.items[1].member.id).toBe('m1')
+      expect(result.summary).toMatchObject({
+        totalMembers: 3,
+        present: 1,
+        fullDay: 1,
+        absent: 2,
+      })
       expect(result.levels[0]).toEqual({ id: null, name: 'All Members', count: 3 })
+      expect(result.levels[1]).toEqual({ id: 'l1', name: 'Men', count: 2 })
       expect(result.meta.total).toBe(2)
     })
 
@@ -178,9 +177,13 @@ describe('attendance.service', () => {
           afternoonOut: new Date('2026-08-12T17:00:00.000Z'),
         },
       ])
-      vi.spyOn(attendanceRepository, 'findAllAttendancesInRange').mockResolvedValue([])
-      vi.spyOn(attendanceRepository, 'countMembersGroupedByLevel').mockResolvedValue([])
-      vi.spyOn(attendanceRepository, 'findAllLevels').mockResolvedValue([])
+      vi.spyOn(attendanceRepository, 'summarizeAttendanceInRange').mockResolvedValue({
+        fullDay: 1,
+        morningOnly: 0,
+        afternoonOnly: 0,
+        partialMixed: 0,
+      })
+      vi.spyOn(attendanceRepository, 'countMembersByLevel').mockResolvedValue([])
 
       const result = await attendanceService.listAttendance({
         from,
@@ -197,6 +200,118 @@ describe('attendance.service', () => {
       )
       expect(result.items[0].attendance.status).toBe('full_day')
       expect(result.items[1].attendance.status).toBe('absent')
+    })
+
+    it('keeps the same list response contract for single-day results', async () => {
+      const from = new Date('2026-08-12')
+      const to = new Date('2026-08-12')
+
+      vi.spyOn(attendanceRepository, 'findMembers').mockResolvedValue([
+        {
+          id: 'm1',
+          firstName: 'Pastor',
+          middleName: null,
+          lastName: 'Admin',
+          groups: [{ level: { id: 'l1', name: 'Men' } }],
+        },
+        {
+          id: 'm2',
+          firstName: 'Absent',
+          middleName: null,
+          lastName: 'Member',
+          groups: [],
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'countMembers').mockResolvedValue(2)
+      vi.spyOn(attendanceRepository, 'findAttendancesByMemberIds').mockResolvedValue([
+        {
+          id: 'a1',
+          memberId: 'm1',
+          date: from,
+          morningIn: new Date('2026-08-12T08:00:00.000Z'),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'summarizeAttendanceInRange').mockResolvedValue({
+        fullDay: 0,
+        morningOnly: 1,
+        afternoonOnly: 0,
+        partialMixed: 0,
+      })
+      vi.spyOn(attendanceRepository, 'countMembersByLevel').mockResolvedValue([
+        { id: 'l1', name: 'Men', count: 1 },
+      ])
+
+      const result = await attendanceService.listAttendance({ from, to })
+
+      expect(Object.keys(result).sort()).toEqual(
+        ['items', 'levels', 'meta', 'period', 'summary'].sort(),
+      )
+      expect(result.period).toEqual({
+        from: new Date(Date.UTC(2026, 7, 12)),
+        to: new Date(Date.UTC(2026, 7, 12)),
+      })
+      expect(result.summary).toEqual({
+        totalMembers: 2,
+        present: 1,
+        attendanceRate: 50,
+        fullDay: 0,
+        partial: 1,
+        morningOnly: 1,
+        afternoonOnly: 0,
+        absent: 1,
+      })
+      expect(result.levels).toEqual([
+        { id: null, name: 'All Members', count: 2 },
+        { id: 'l1', name: 'Men', count: 1 },
+      ])
+      expect(result.meta).toEqual({
+        page: 1,
+        limit: 20,
+        total: 2,
+        totalPages: 1,
+      })
+      expect(result.items[0]).toEqual({
+        member: {
+          id: 'm1',
+          firstName: 'Pastor',
+          middleName: null,
+          lastName: 'Admin',
+          name: 'Pastor Admin',
+          level: { id: 'l1', name: 'Men' },
+        },
+        attendance: {
+          id: 'a1',
+          date: from,
+          morningIn: new Date('2026-08-12T08:00:00.000Z'),
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+          status: 'morning_only',
+        },
+      })
+      expect(result.items[1]).toEqual({
+        member: {
+          id: 'm2',
+          firstName: 'Absent',
+          middleName: null,
+          lastName: 'Member',
+          name: 'Absent Member',
+          level: null,
+        },
+        attendance: {
+          id: null,
+          date: null,
+          morningIn: null,
+          morningOut: null,
+          afternoonIn: null,
+          afternoonOut: null,
+          status: 'absent',
+        },
+      })
+      expect(result.items[0].attendances).toBeUndefined()
     })
 
     it('returns attendances arrays for a multi-day range', async () => {
@@ -233,29 +348,14 @@ describe('attendance.service', () => {
           afternoonOut: null,
         },
       ])
-      vi.spyOn(attendanceRepository, 'findAllAttendancesInRange').mockResolvedValue([
-        {
-          memberId: 'm1',
-          date: from,
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: null,
-          afternoonOut: null,
-        },
-        {
-          memberId: 'm1',
-          date: to,
-          morningIn: new Date(),
-          morningOut: null,
-          afternoonIn: new Date(),
-          afternoonOut: null,
-        },
-      ])
-      vi.spyOn(attendanceRepository, 'countMembersGroupedByLevel').mockResolvedValue([
-        { id: 'm1', groups: [{ levelId: 'l1' }] },
-      ])
-      vi.spyOn(attendanceRepository, 'findAllLevels').mockResolvedValue([
-        { id: 'l1', name: 'Men' },
+      vi.spyOn(attendanceRepository, 'summarizeAttendanceInRange').mockResolvedValue({
+        fullDay: 1,
+        morningOnly: 0,
+        afternoonOnly: 0,
+        partialMixed: 0,
+      })
+      vi.spyOn(attendanceRepository, 'countMembersByLevel').mockResolvedValue([
+        { id: 'l1', name: 'Men', count: 1 },
       ])
 
       const result = await attendanceService.listAttendance({ from, to })

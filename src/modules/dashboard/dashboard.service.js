@@ -54,17 +54,8 @@ async function getStats() {
 }
 
 async function getMemberBreakdown() {
-  const statuses = await dashboardRepository.countMembersGroupedByStatus()
-  const total = statuses.reduce((sum, status) => sum + status._count.members, 0)
-
-  return {
-    total,
-    breakdown: statuses.map((status) => ({
-      status: status.name,
-      count: status._count.members,
-      percentage: total ? Math.round((status._count.members / total) * 1000) / 10 : 0,
-    })),
-  }
+  // Aggregated in SQL; shape stays { total, breakdown: [{ status, count, percentage }] }.
+  return dashboardRepository.summarizeMembersByStatus()
 }
 
 function parseRangeMonths(range) {
@@ -95,19 +86,18 @@ async function getFinanceSummary(range) {
   const rangeStart = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1)
 
   const buckets = buildEmptyMonthBuckets(months)
-  const transactions = await dashboardRepository.sumTransactionsGroupedByTypeInRange(rangeStart)
+  const rows = await dashboardRepository.sumTransactionsByMonthAndType(rangeStart)
 
-  for (const tx of transactions) {
-    const key = `${tx.createdAt.getFullYear()}-${tx.createdAt.getMonth()}`
+  for (const row of rows) {
+    // SQL EXTRACT(MONTH) is 1–12; JS Date#getMonth() is 0–11.
+    const key = `${row.year}-${row.month - 1}`
     const bucket = buckets.get(key)
-
     if (!bucket) continue
 
-    const amount = toAmountNumber(tx.amount)
-    if (tx.type.name === 'Income') {
-      bucket.income += amount
-    } else if (tx.type.name === 'Expense') {
-      bucket.expense += amount
+    if (row.type === 'Income') {
+      bucket.income += row.amount
+    } else if (row.type === 'Expense') {
+      bucket.expense += row.amount
     }
   }
 
@@ -164,15 +154,6 @@ function weekKey(date) {
   return dateKey(startOfWeekMondayUtc(date))
 }
 
-function isPresent(attendance) {
-  return Boolean(
-    attendance.morningIn ||
-      attendance.morningOut ||
-      attendance.afternoonIn ||
-      attendance.afternoonOut,
-  )
-}
-
 function buildEmptyWeekBuckets(weeks) {
   const buckets = new Map()
   const currentWeekStart = startOfWeekMondayUtc(new Date())
@@ -189,7 +170,7 @@ function buildEmptyWeekBuckets(weeks) {
         timeZone: 'UTC',
       }),
       percentage: 0,
-      _dailyPresent: new Map(),
+      _dailyRates: [],
     })
   }
 
@@ -202,41 +183,57 @@ async function getAttendanceSummary(range) {
   const rangeStart = buckets.values().next().value.date
   const rangeEnd = addUtcDays(startOfWeekMondayUtc(new Date()), 6)
 
-  const [totalMembers, attendances] = await Promise.all([
+  const [totalMembers, dailyPresent] = await Promise.all([
     dashboardRepository.countMembers(),
-    dashboardRepository.findAttendancesInRange(rangeStart, rangeEnd),
+    dashboardRepository.countPresentMembersByDate(rangeStart, rangeEnd),
   ])
 
-  for (const row of attendances) {
-    if (!isPresent(row)) continue
-
+  for (const row of dailyPresent) {
     const bucket = buckets.get(weekKey(row.date))
-    if (!bucket) continue
+    if (!bucket || !totalMembers) continue
 
-    const day = dateKey(row.date)
-    const presentSet = bucket._dailyPresent.get(day) ?? new Set()
-    presentSet.add(row.memberId)
-    bucket._dailyPresent.set(day, presentSet)
+    bucket._dailyRates.push((row.present / totalMembers) * 100)
   }
 
-  return Array.from(buckets.values()).map(({ key: _key, _dailyPresent, ...bucket }) => {
-    if (!totalMembers || _dailyPresent.size === 0) {
+  return Array.from(buckets.values()).map(({ key: _key, _dailyRates, ...bucket }) => {
+    if (!_dailyRates.length) {
       return { ...bucket, percentage: 0 }
     }
 
-    let rateSum = 0
-    for (const presentSet of _dailyPresent.values()) {
-      rateSum += (presentSet.size / totalMembers) * 100
-    }
-
+    const rateSum = _dailyRates.reduce((sum, rate) => sum + rate, 0)
     return {
       ...bucket,
-      percentage: Math.round((rateSum / _dailyPresent.size) * 10) / 10,
+      percentage: Math.round((rateSum / _dailyRates.length) * 10) / 10,
     }
   })
 }
 
+async function getOverview({
+  financeRange = '6m',
+  attendanceRange = '5w',
+  activityLimit = 5,
+} = {}) {
+  const [stats, memberBreakdown, financeSummary, attendanceSummary, recentActivity] =
+    await Promise.all([
+      getStats(),
+      getMemberBreakdown(),
+      getFinanceSummary(financeRange),
+      getAttendanceSummary(attendanceRange),
+      getRecentActivity(activityLimit),
+    ])
+
+  return {
+    stats,
+    memberBreakdown,
+    financeSummary,
+    attendanceSummary,
+    recentActivity,
+  }
+}
+
 module.exports = {
+  getOverview,
+  // Kept for unit tests / internal reuse by getOverview
   getStats,
   getMemberBreakdown,
   getFinanceSummary,

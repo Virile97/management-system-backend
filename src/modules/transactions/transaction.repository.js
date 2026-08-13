@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 
 const transactionIncludes = {
@@ -78,29 +79,95 @@ function sumAmountByTypeName(typeName, range = {}) {
   })
 }
 
-function sumGroupedByOfferingType(range = {}, offeringTypeIds) {
-  return prisma.transactionItem.groupBy({
-    by: ['offeringTypeId'],
-    where: {
-      transaction: { createdAt: buildCreatedAtRange(range) },
-      ...(offeringTypeIds?.length ? { offeringTypeId: { in: offeringTypeIds } } : {}),
-    },
-    _sum: { amount: true },
-  })
+function buildCreatedAtFilterSql({ start, end } = {}) {
+  const conditions = [Prisma.sql`TRUE`]
+  if (start) conditions.push(Prisma.sql`t."createdAt" >= ${start}`)
+  if (end) conditions.push(Prisma.sql`t."createdAt" <= ${end}`)
+  return Prisma.join(conditions, ' AND ')
 }
 
-function findOfferingTypesByIds(ids) {
-  return prisma.offeringType.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, name: true },
-  })
+/**
+ * Offering-type totals in one SQL pass (name + sum), sorted by total desc.
+ * @returns {Promise<Array<{ offeringType: string, total: number }>>}
+ */
+async function sumByOfferingType(range = {}, offeringTypeIds) {
+  const conditions = [buildCreatedAtFilterSql(range)]
+
+  if (offeringTypeIds?.length) {
+    conditions.push(Prisma.sql`ti."offeringTypeId" IN (${Prisma.join(offeringTypeIds)})`)
+  }
+
+  const whereSql = Prisma.join(conditions, ' AND ')
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      ot.name AS "offeringType",
+      COALESCE(SUM(ti.amount), 0) AS total
+    FROM transaction_items ti
+    INNER JOIN transactions t ON t.id = ti."transactionId"
+    INNER JOIN offering_types ot ON ot.id = ti."offeringTypeId"
+    WHERE ${whereSql}
+    GROUP BY ot.name
+    ORDER BY total DESC, ot.name ASC
+  `
+
+  return rows.map((row) => ({
+    offeringType: row.offeringType,
+    total: Number(row.total),
+  }))
 }
 
-function findAllForTrend(range = {}) {
-  return prisma.transaction.findMany({
-    where: { createdAt: buildCreatedAtRange(range) },
-    select: { amount: true, createdAt: true, type: { select: { name: true } } },
-  })
+/**
+ * Trend aggregates by day or month — no per-transaction materialization.
+ * month/day use SQL EXTRACT (1–12 / 1–31).
+ * @returns {Promise<Array<{ year: number, month: number, day?: number, type: string, amount: number }>>}
+ */
+async function sumTrendGrouped({ start, end, grain }) {
+  const whereSql = buildCreatedAtFilterSql({ start, end })
+
+  if (grain === 'day') {
+    const rows = await prisma.$queryRaw`
+      SELECT
+        EXTRACT(YEAR FROM t."createdAt")::int AS year,
+        EXTRACT(MONTH FROM t."createdAt")::int AS month,
+        EXTRACT(DAY FROM t."createdAt")::int AS day,
+        tt.name AS type,
+        COALESCE(SUM(t.amount), 0) AS amount
+      FROM transactions t
+      INNER JOIN transaction_types tt ON tt.id = t."typeId"
+      WHERE ${whereSql}
+      GROUP BY 1, 2, 3, 4
+      ORDER BY 1, 2, 3, 4
+    `
+
+    return rows.map((row) => ({
+      year: Number(row.year),
+      month: Number(row.month),
+      day: Number(row.day),
+      type: row.type,
+      amount: Number(row.amount),
+    }))
+  }
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      EXTRACT(YEAR FROM t."createdAt")::int AS year,
+      EXTRACT(MONTH FROM t."createdAt")::int AS month,
+      tt.name AS type,
+      COALESCE(SUM(t.amount), 0) AS amount
+    FROM transactions t
+    INNER JOIN transaction_types tt ON tt.id = t."typeId"
+    WHERE ${whereSql}
+    GROUP BY 1, 2, 3
+    ORDER BY 1, 2, 3
+  `
+
+  return rows.map((row) => ({
+    year: Number(row.year),
+    month: Number(row.month),
+    type: row.type,
+    amount: Number(row.amount),
+  }))
 }
 
 async function findEarliestTransactionDate() {
@@ -194,9 +261,8 @@ module.exports = {
   count,
   findById,
   sumAmountByTypeName,
-  sumGroupedByOfferingType,
-  findOfferingTypesByIds,
-  findAllForTrend,
+  sumByOfferingType,
+  sumTrendGrouped,
   findEarliestTransactionDate,
   findConfig,
   create,

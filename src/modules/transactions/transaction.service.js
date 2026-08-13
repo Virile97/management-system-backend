@@ -74,18 +74,8 @@ async function getStats(query) {
 
 async function getByOfferingType(query = {}) {
   const range = resolvePeriodRange(query)
-  const grouped = await transactionRepository.sumGroupedByOfferingType(range, query.offeringTypeId)
-  const offeringTypes = await transactionRepository.findOfferingTypesByIds(
-    grouped.map((row) => row.offeringTypeId),
-  )
-  const namesById = new Map(offeringTypes.map((type) => [type.id, type.name]))
-
-  return grouped
-    .map((row) => ({
-      offeringType: namesById.get(row.offeringTypeId) ?? 'Unknown',
-      total: toAmountNumber(row._sum.amount),
-    }))
-    .sort((a, b) => b.total - a.total)
+  // Aggregated in SQL; shape stays [{ offeringType, total }].
+  return transactionRepository.sumByOfferingType(range, query.offeringTypeId)
 }
 
 function buildEmptyDayBuckets(start, end) {
@@ -128,18 +118,11 @@ function buildEmptyMonthBuckets(start, end) {
   return buckets
 }
 
-function dayBucketKey(date) {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-}
-
-function monthBucketKey(date) {
-  return `${date.getFullYear()}-${date.getMonth()}`
-}
-
 async function getMonthlyTrend(query) {
   const { period } = query
   const range = resolvePeriodRange(query)
   const useDayBuckets = period === 'today' || period === 'month'
+  const grain = useDayBuckets ? 'day' : 'month'
 
   let { start, end } = range
   if (!start || !end) {
@@ -150,19 +133,20 @@ async function getMonthlyTrend(query) {
   }
 
   const buckets = useDayBuckets ? buildEmptyDayBuckets(start, end) : buildEmptyMonthBuckets(start, end)
-  const bucketKey = useDayBuckets ? dayBucketKey : monthBucketKey
+  const rows = await transactionRepository.sumTrendGrouped({ start, end, grain })
 
-  const transactions = await transactionRepository.findAllForTrend({ start, end })
-
-  for (const tx of transactions) {
-    const bucket = buckets.get(bucketKey(tx.createdAt))
+  for (const row of rows) {
+    // SQL EXTRACT month/day are 1-based; JS Date getters are 0-based for month.
+    const key = useDayBuckets
+      ? `${row.year}-${row.month - 1}-${row.day}`
+      : `${row.year}-${row.month - 1}`
+    const bucket = buckets.get(key)
     if (!bucket) continue
 
-    const amount = toAmountNumber(tx.amount)
-    if (tx.type.name === 'Income') {
-      bucket.income += amount
-    } else if (tx.type.name === 'Expense') {
-      bucket.expense += amount
+    if (row.type === 'Income') {
+      bucket.income += row.amount
+    } else if (row.type === 'Expense') {
+      bucket.expense += row.amount
     }
   }
 

@@ -4,25 +4,13 @@ const { getPagination, buildMeta } = require('../../shared/utils')
 const { logActivity } = require('../../shared/utils/activity-log')
 const logger = require('../../config/logger')
 const { resolvePeriodRange } = require('../../shared/utils/period-range')
-const { deriveStatus } = require('../attendance/attendance.service')
+const { toAttendanceDay } = require('../attendance/attendance.mapper')
 
 // level/lighthouseGroup now live on each member_groups row (duplicated across
 // a member's rows), so the member-level view reads them off the first row.
 // groups is flattened to a plain array of { id, role }, and the raw FK ids
 // are dropped since the nested status/level/lighthouseGroup objects replace
 // them.
-function toAttendanceResponse(attendance) {
-  return {
-    id: attendance.id,
-    date: attendance.date,
-    morningIn: attendance.morningIn ?? null,
-    morningOut: attendance.morningOut ?? null,
-    afternoonIn: attendance.afternoonIn ?? null,
-    afternoonOut: attendance.afternoonOut ?? null,
-    status: deriveStatus(attendance),
-  }
-}
-
 function toMemberResponse(member) {
   const { statusId: _statusId, groups, attendances, ...rest } = member
   const [firstGroup] = groups
@@ -33,7 +21,7 @@ function toMemberResponse(member) {
     lighthouseGroup: firstGroup?.lighthouseGroup ?? null,
     groups: groups.map(({ group }) => group),
     ...(attendances !== undefined
-      ? { attendances: attendances.map(toAttendanceResponse) }
+      ? { attendances: attendances.map(toAttendanceDay) }
       : {}),
   }
 }
@@ -55,27 +43,8 @@ async function listMembers(query) {
 
 async function getBreakdown(query) {
   const { search, status, from, to } = query
-
-  const [grouped, statuses] = await Promise.all([
-    memberRepository.countGroupedByStatus({ search, status, from, to }),
-    memberRepository.findAllStatuses(),
-  ])
-
-  const namesById = new Map(statuses.map((s) => [s.id, s.name]))
-  const total = grouped.reduce((sum, row) => sum + row._count._all, 0)
-
-  const breakdown = grouped
-    .map((row) => {
-      const count = row._count._all
-      return {
-        status: row.statusId ? (namesById.get(row.statusId) ?? 'Unknown') : 'Unassigned',
-        count,
-        percentage: total ? Math.round((count / total) * 1000) / 10 : 0,
-      }
-    })
-    .sort((a, b) => b.count - a.count)
-
-  return { total, breakdown }
+  // Aggregated in SQL; response shape stays { total, breakdown: [{ status, count, percentage }] }.
+  return memberRepository.summarizeBreakdownByStatus({ search, status, from, to })
 }
 
 async function getMemberById(id, query = {}) {
@@ -91,6 +60,7 @@ async function getMemberById(id, query = {}) {
     throw AppError.notFound('Member not found')
   }
 
+  // Attendances stay on the member object; pagination is via query + response meta.
   return {
     member: toMemberResponse({ ...member, attendances }),
     meta: buildMeta({ page, limit, total: attendanceTotal }),
@@ -152,7 +122,7 @@ async function getMemberOfferings(id, query) {
   return {
     memberId: id,
     period: { period: query.period ?? 'month', from: start, to: end },
-    types: typeRows.map((row) => row.offeringType),
+    types: typeRows,
     totalOfferings: toAmountNumber(sum._sum.amount),
     totalRecords,
     items: transactions.flatMap(toOfferingRows),

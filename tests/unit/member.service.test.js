@@ -81,8 +81,8 @@ describe('member.service', () => {
     it('returns only the offering types the member has records for', async () => {
       mockOfferings([], {
         typeRows: [
-          { offeringType: { id: 'o2', name: 'First Fruit' } },
-          { offeringType: { id: 'o1', name: 'Tithes' } },
+          { id: 'o2', name: 'First Fruit' },
+          { id: 'o1', name: 'Tithes' },
         ],
       })
 
@@ -97,8 +97,8 @@ describe('member.service', () => {
     it('passes offeringTypeId through to every repository query', async () => {
       mockOfferings([], {
         typeRows: [
-          { offeringType: { id: 'o2', name: 'First Fruit' } },
-          { offeringType: { id: 'o1', name: 'Tithes' } },
+          { id: 'o2', name: 'First Fruit' },
+          { id: 'o1', name: 'Tithes' },
         ],
         sum: '900.00',
       })
@@ -182,6 +182,67 @@ describe('member.service', () => {
       expect(result.totalOfferings).toBe(0)
 
       vi.useRealTimers()
+    })
+  })
+
+  describe('listMembers / getBreakdown response contract', () => {
+    it('keeps the list response shape stable', async () => {
+      vi.spyOn(memberRepository, 'findMany').mockResolvedValue([
+        {
+          id: 'm1',
+          firstName: 'Margaret',
+          middleName: null,
+          lastName: 'Osei',
+          email: 'margaret@example.com',
+          statusId: 's1',
+          status: { id: 's1', name: 'Active' },
+          groups: [
+            {
+              group: { id: 'g1', role: 'Member' },
+              level: { id: 'l1', name: 'Men' },
+              lighthouseGroup: null,
+            },
+          ],
+        },
+      ])
+      vi.spyOn(memberRepository, 'count').mockResolvedValue(1)
+
+      const result = await memberService.listMembers({ page: 1, limit: 20 })
+
+      expect(Object.keys(result).sort()).toEqual(['items', 'meta'].sort())
+      expect(result.meta).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 })
+      expect(result.items[0]).toMatchObject({
+        id: 'm1',
+        firstName: 'Margaret',
+        lastName: 'Osei',
+        status: { id: 's1', name: 'Active' },
+        level: { id: 'l1', name: 'Men' },
+        lighthouseGroup: null,
+        groups: [{ id: 'g1', role: 'Member' }],
+      })
+      expect(result.items[0].statusId).toBeUndefined()
+      expect(result.items[0].attendances).toBeUndefined()
+    })
+
+    it('keeps the breakdown response shape stable', async () => {
+      vi.spyOn(memberRepository, 'summarizeBreakdownByStatus').mockResolvedValue({
+        total: 10,
+        breakdown: [
+          { status: 'Active', count: 7, percentage: 70 },
+          { status: 'Inactive', count: 3, percentage: 30 },
+        ],
+      })
+
+      const result = await memberService.getBreakdown({})
+
+      expect(result).toEqual({
+        total: 10,
+        breakdown: [
+          { status: 'Active', count: 7, percentage: 70 },
+          { status: 'Inactive', count: 3, percentage: 30 },
+        ],
+      })
+      expect(memberRepository.summarizeBreakdownByStatus).toHaveBeenCalled()
     })
   })
 
