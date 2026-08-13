@@ -35,6 +35,12 @@ const envSchema = z.object({
 
   // Log Prisma queries slower than this (ms). 0 disables. Use 200 locally to measure.
   SLOW_QUERY_MS: z.coerce.number().default(0),
+
+  // Auto Active/Inactive sync threshold, e.g. "30d", "4w", "30 days", "4 weeks".
+  // Used by the daily cron job: npm run jobs:install-member-status-cron
+  MEMBER_INACTIVE_AFTER: z.string().default('4w'),
+  // Only for optional --loop mode (prefer cron one-shot in production).
+  MEMBER_STATUS_SYNC_INTERVAL_MS: z.coerce.number().default(86_400_000),
 })
 
 const parsed = envSchema.safeParse(process.env)

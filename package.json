@@ -16,6 +16,12 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.js",
     "measure:queries": "node scripts/measure-hot-queries.js",
+    "jobs:sync-member-status": "node scripts/jobs/sync-member-status.js",
+    "jobs:install-member-status-cron": "bash scripts/cron/install-member-status.sh",
+    "jobs:remove-member-status-cron": "bash scripts/cron/install-member-status.sh --remove",
+
+
+
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
