@@ -14,47 +14,122 @@ function endOfDay(date) {
   return end
 }
 
-function buildWhere({ type, category, search, from, to }) {
-  const where = {}
+function buildListFilterSql({ type, category, search, from, to }) {
+  const conditions = [Prisma.sql`TRUE`]
 
   if (type) {
-    where.type = { name: type }
+    conditions.push(Prisma.sql`tt.name = ${type}`)
   }
 
   if (category) {
-    where.category = { name: category }
+    conditions.push(Prisma.sql`c.name = ${category}`)
+  }
+
+  if (from) {
+    conditions.push(Prisma.sql`t."createdAt" >= ${from}`)
+  }
+
+  if (to) {
+    conditions.push(Prisma.sql`t."createdAt" <= ${endOfDay(to)}`)
   }
 
   if (search) {
-    where.OR = [
-      { description: { contains: search, mode: 'insensitive' } },
-      { category: { name: { contains: search, mode: 'insensitive' } } },
-      { recordedByUser: { name: { contains: search, mode: 'insensitive' } } },
-    ]
+    const pattern = `%${search}%`
+    conditions.push(Prisma.sql`(
+      t.description ILIKE ${pattern}
+      OR c.name ILIKE ${pattern}
+      OR u.name ILIKE ${pattern}
+    )`)
   }
 
-  if (from || to) {
-    where.createdAt = {
-      ...(from ? { gte: from } : {}),
-      ...(to ? { lte: endOfDay(to) } : {}),
-    }
+  return Prisma.join(conditions, ' AND ')
+}
+
+function mapListRow(row) {
+  const breakdown = Array.isArray(row.breakdown) ? row.breakdown : []
+
+  return {
+    id: row.id,
+    memberId: row.memberId,
+    description: row.description,
+    amount: row.amount,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    type: row.type,
+    category: row.category,
+    recordedByUser: row.recordedByUser,
+    // Keep Prisma-shaped `items` so the service mapper stays unchanged.
+    items: breakdown.map((item) => ({
+      offeringType: item.offeringType,
+      amount: item.amount,
+    })),
   }
-
-  return where
 }
 
-function findMany({ skip, limit, type, category, search, from, to }) {
-  return prisma.transaction.findMany({
-    where: buildWhere({ type, category, search, from, to }),
-    skip,
-    take: limit,
-    orderBy: { createdAt: 'desc' },
-    include: transactionIncludes,
-  })
+/**
+ * One SQL round-trip: joins type/category/user and aggregates line items as JSON.
+ * Avoids Prisma's per-relation follow-up queries on the finance list.
+ */
+async function findMany({ skip, limit, type, category, search, from, to }) {
+  const whereSql = buildListFilterSql({ type, category, search, from, to })
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      t.id,
+      t."memberId",
+      t.description,
+      t.amount,
+      t."createdAt",
+      t."updatedAt",
+      json_build_object('id', tt.id, 'name', tt.name) AS type,
+      CASE
+        WHEN c.id IS NULL THEN NULL
+        ELSE json_build_object('id', c.id, 'name', c.name)
+      END AS category,
+      CASE
+        WHEN u.id IS NULL THEN NULL
+        ELSE json_build_object('id', u.id, 'name', u.name, 'email', u.email)
+      END AS "recordedByUser",
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'offeringType', json_build_object('id', ot.id, 'name', ot.name),
+              'amount', ti.amount
+            )
+            ORDER BY ti."createdAt" ASC, ti.id ASC
+          )
+          FROM transaction_items ti
+          INNER JOIN offering_types ot ON ot.id = ti."offeringTypeId"
+          WHERE ti."transactionId" = t.id
+        ),
+        '[]'::json
+      ) AS breakdown
+    FROM transactions t
+    INNER JOIN transaction_types tt ON tt.id = t."typeId"
+    LEFT JOIN categories c ON c.id = t."categoryId"
+    LEFT JOIN users u ON u.id = t."recordedBy"
+    WHERE ${whereSql}
+    ORDER BY t."createdAt" DESC
+    LIMIT ${limit} OFFSET ${skip}
+  `
+
+  return rows.map(mapListRow)
 }
 
-function count({ type, category, search, from, to }) {
-  return prisma.transaction.count({ where: buildWhere({ type, category, search, from, to }) })
+async function count({ type, category, search, from, to }) {
+  const whereSql = buildListFilterSql({ type, category, search, from, to })
+
+  const rows = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS total
+    FROM transactions t
+    INNER JOIN transaction_types tt ON tt.id = t."typeId"
+    LEFT JOIN categories c ON c.id = t."categoryId"
+    LEFT JOIN users u ON u.id = t."recordedBy"
+    WHERE ${whereSql}
+  `
+
+  return Number(rows[0]?.total ?? 0)
 }
 
 function findById(id) {
@@ -72,18 +147,40 @@ function buildCreatedAtRange({ start, end }) {
   }
 }
 
-function sumAmountByTypeName(typeName, range = {}) {
-  return prisma.transaction.aggregate({
-    where: { type: { name: typeName }, createdAt: buildCreatedAtRange(range) },
-    _sum: { amount: true },
-  })
-}
-
 function buildCreatedAtFilterSql({ start, end } = {}) {
   const conditions = [Prisma.sql`TRUE`]
   if (start) conditions.push(Prisma.sql`t."createdAt" >= ${start}`)
   if (end) conditions.push(Prisma.sql`t."createdAt" <= ${end}`)
   return Prisma.join(conditions, ' AND ')
+}
+
+/**
+ * Income + expense totals in one scan (replaces two separate aggregates).
+ * @returns {Promise<{ income: number, expense: number }>}
+ */
+async function sumIncomeAndExpense(range = {}) {
+  const whereSql = buildCreatedAtFilterSql(range)
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      COALESCE(SUM(CASE WHEN tt.name = 'Income' THEN t.amount ELSE 0 END), 0) AS income,
+      COALESCE(SUM(CASE WHEN tt.name = 'Expense' THEN t.amount ELSE 0 END), 0) AS expense
+    FROM transactions t
+    INNER JOIN transaction_types tt ON tt.id = t."typeId"
+    WHERE ${whereSql}
+  `
+
+  return {
+    income: Number(rows[0]?.income ?? 0),
+    expense: Number(rows[0]?.expense ?? 0),
+  }
+}
+
+function sumAmountByTypeName(typeName, range = {}) {
+  return prisma.transaction.aggregate({
+    where: { type: { name: typeName }, createdAt: buildCreatedAtRange(range) },
+    _sum: { amount: true },
+  })
 }
 
 /**
@@ -260,6 +357,7 @@ module.exports = {
   findMany,
   count,
   findById,
+  sumIncomeAndExpense,
   sumAmountByTypeName,
   sumByOfferingType,
   sumTrendGrouped,

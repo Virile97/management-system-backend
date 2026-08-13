@@ -64,9 +64,10 @@ describe('transaction.service', () => {
 
   describe('getStats', () => {
     it('computes net balance from income minus expenses', async () => {
-      vi.spyOn(transactionRepository, 'sumAmountByTypeName').mockImplementation((typeName) =>
-        Promise.resolve({ _sum: { amount: typeName === 'Income' ? '21400' : '7770' } }),
-      )
+      vi.spyOn(transactionRepository, 'sumIncomeAndExpense').mockResolvedValue({
+        income: 21400,
+        expense: 7770,
+      })
 
       const stats = await transactionService.getStats()
 
@@ -74,8 +75,9 @@ describe('transaction.service', () => {
     })
 
     it('defaults to 0 when there are no transactions of a type', async () => {
-      vi.spyOn(transactionRepository, 'sumAmountByTypeName').mockResolvedValue({
-        _sum: { amount: null },
+      vi.spyOn(transactionRepository, 'sumIncomeAndExpense').mockResolvedValue({
+        income: 0,
+        expense: 0,
       })
 
       const stats = await transactionService.getStats()

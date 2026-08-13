@@ -111,22 +111,20 @@ async function getMemberOfferings(id, query) {
   const range = { start, end }
   const offeringTypeIds = query.offeringTypeId
 
-  const [transactions, typeRows, total, totalRecords, sum] = await Promise.all([
+  const [transactions, typeRows, summary] = await Promise.all([
     memberRepository.findOfferingsByMemberId(id, range, offeringTypeIds, { skip, take: limit }),
     memberRepository.findOfferingTypesByMemberId(id),
-    memberRepository.countOfferingsByMemberId(id, range, offeringTypeIds),
-    memberRepository.countOfferingRowsByMemberId(id, range, offeringTypeIds),
-    memberRepository.sumOfferingsByMemberId(id, range, offeringTypeIds),
+    memberRepository.summarizeOfferingsByMemberId(id, range, offeringTypeIds),
   ])
 
   return {
     memberId: id,
     period: { period: query.period ?? 'month', from: start, to: end },
     types: typeRows,
-    totalOfferings: toAmountNumber(sum._sum.amount),
-    totalRecords,
+    totalOfferings: summary.totalAmount,
+    totalRecords: summary.rowCount,
     items: transactions.flatMap(toOfferingRows),
-    meta: buildMeta({ page, limit, total }),
+    meta: buildMeta({ page, limit, total: summary.transactionCount }),
   }
 }
 

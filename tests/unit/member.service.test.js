@@ -9,14 +9,10 @@ function mockOfferings(transactions, { typeRows = [], total, totalRecords, sum }
   vi.spyOn(memberRepository, 'existsById').mockResolvedValue(true)
   vi.spyOn(memberRepository, 'findOfferingsByMemberId').mockResolvedValue(transactions)
   vi.spyOn(memberRepository, 'findOfferingTypesByMemberId').mockResolvedValue(typeRows)
-  vi.spyOn(memberRepository, 'countOfferingsByMemberId').mockResolvedValue(
-    total ?? transactions.length,
-  )
-  vi.spyOn(memberRepository, 'countOfferingRowsByMemberId').mockResolvedValue(
-    totalRecords ?? rowCount,
-  )
-  vi.spyOn(memberRepository, 'sumOfferingsByMemberId').mockResolvedValue({
-    _sum: { amount: sum ?? null },
+  vi.spyOn(memberRepository, 'summarizeOfferingsByMemberId').mockResolvedValue({
+    transactionCount: total ?? transactions.length,
+    rowCount: totalRecords ?? rowCount,
+    totalAmount: sum == null ? 0 : Number(sum),
   })
 }
 
@@ -94,7 +90,7 @@ describe('member.service', () => {
       ])
     })
 
-    it('passes offeringTypeId through to every repository query', async () => {
+    it('passes offeringTypeId through to list and summary queries', async () => {
       mockOfferings([], {
         typeRows: [
           { id: 'o2', name: 'First Fruit' },
@@ -108,19 +104,17 @@ describe('member.service', () => {
         offeringTypeId: ['o1'],
       })
 
-      for (const method of [
-        'findOfferingsByMemberId',
-        'countOfferingsByMemberId',
-        'countOfferingRowsByMemberId',
-        'sumOfferingsByMemberId',
-      ]) {
-        expect(memberRepository[method]).toHaveBeenCalledWith(
-          'm1',
-          expect.any(Object),
-          ['o1'],
-          ...(method === 'findOfferingsByMemberId' ? [expect.any(Object)] : []),
-        )
-      }
+      expect(memberRepository.findOfferingsByMemberId).toHaveBeenCalledWith(
+        'm1',
+        expect.any(Object),
+        ['o1'],
+        expect.any(Object),
+      )
+      expect(memberRepository.summarizeOfferingsByMemberId).toHaveBeenCalledWith(
+        'm1',
+        expect.any(Object),
+        ['o1'],
+      )
       expect(result.totalOfferings).toBe(900)
       expect(result.types).toHaveLength(2)
     })

@@ -88,6 +88,7 @@ model ActivityLog {
   createdAt DateTime       @default(now())
 
   @@index([createdAt])
+  @@index([action, createdAt])
   @@map("activity_logs")
 }
 
@@ -175,6 +176,7 @@ model Member {
   attendances  Attendance[]
 
   @@index([statusId])
+  @@index([createdAt])
   @@map("members")
 }
 
@@ -228,6 +230,7 @@ model Transaction {
   @@index([categoryId])
   @@index([createdAt])
   @@index([memberId])
+  @@index([typeId, createdAt])
   @@map("transactions")
 }
 

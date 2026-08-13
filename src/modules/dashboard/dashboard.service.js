@@ -1,8 +1,10 @@
 const dashboardRepository = require('./dashboard.repository')
-const { createMemoCache } = require('../../shared/utils/memo-cache')
+const { createMemoCache, createKeyedMemoCache } = require('../../shared/utils/memo-cache')
 
 const STATS_CACHE_TTL_MS = 60_000
+const OVERVIEW_CACHE_TTL_MS = 60_000
 const statsCache = createMemoCache(STATS_CACHE_TTL_MS)
+const overviewCache = createKeyedMemoCache(OVERVIEW_CACHE_TTL_MS)
 
 function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
@@ -208,11 +210,7 @@ async function getAttendanceSummary(range) {
   })
 }
 
-async function getOverview({
-  financeRange = '6m',
-  attendanceRange = '5w',
-  activityLimit = 5,
-} = {}) {
+async function computeOverview({ financeRange, attendanceRange, activityLimit }) {
   const [stats, memberBreakdown, financeSummary, attendanceSummary, recentActivity] =
     await Promise.all([
       getStats(),
@@ -231,6 +229,22 @@ async function getOverview({
   }
 }
 
+async function getOverview({
+  financeRange = '6m',
+  attendanceRange = '5w',
+  activityLimit = 5,
+} = {}) {
+  const cacheKey = `${financeRange}|${attendanceRange}|${activityLimit}`
+  return overviewCache(cacheKey, () =>
+    computeOverview({ financeRange, attendanceRange, activityLimit }),
+  )
+}
+
+function clearDashboardCaches() {
+  statsCache.clear()
+  overviewCache.clear()
+}
+
 module.exports = {
   getOverview,
   // Kept for unit tests / internal reuse by getOverview
@@ -239,5 +253,6 @@ module.exports = {
   getFinanceSummary,
   getRecentActivity,
   getAttendanceSummary,
-  _clearStatsCache: statsCache.clear,
+  _clearStatsCache: clearDashboardCaches,
+  _clearDashboardCaches: clearDashboardCaches,
 }

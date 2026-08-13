@@ -287,6 +287,28 @@ describe('dashboard.service', () => {
 
       vi.useRealTimers()
     })
+
+    it('serves a second identical overview call from cache', async () => {
+      vi.spyOn(dashboardRepository, 'countMembers').mockResolvedValue(1)
+      vi.spyOn(dashboardRepository, 'countMembersByStatusName').mockResolvedValue(1)
+      vi.spyOn(dashboardRepository, 'sumTransactionsByTypeName').mockResolvedValue({
+        _sum: { amount: '0' },
+      })
+      vi.spyOn(dashboardRepository, 'summarizeMembersByStatus').mockResolvedValue({
+        total: 1,
+        breakdown: [],
+      })
+      vi.spyOn(dashboardRepository, 'sumTransactionsByMonthAndType').mockResolvedValue([])
+      vi.spyOn(dashboardRepository, 'countPresentMembersByDate').mockResolvedValue([])
+      vi.spyOn(dashboardRepository, 'findRecentActivityLogs').mockResolvedValue([])
+
+      const params = { financeRange: '6m', attendanceRange: '5w', activityLimit: 5 }
+      await dashboardService.getOverview(params)
+      await dashboardService.getOverview(params)
+
+      expect(dashboardRepository.summarizeMembersByStatus).toHaveBeenCalledTimes(1)
+      expect(dashboardRepository.findRecentActivityLogs).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('getAttendanceSummary', () => {

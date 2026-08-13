@@ -32,6 +32,9 @@ const envSchema = z.object({
   APP_NAME: z.string().optional().default('Management System'),
 
   PASSWORD_SETUP_TOKEN_EXPIRES_IN_HOURS: z.coerce.number().default(48),
+
+  // Log Prisma queries slower than this (ms). 0 disables. Use 200 locally to measure.
+  SLOW_QUERY_MS: z.coerce.number().default(0),
 })
 
 const parsed = envSchema.safeParse(process.env)

@@ -56,14 +56,8 @@ async function getTransactionById(id) {
 
 async function getStats(query) {
   const range = resolvePeriodRange(query)
-
-  const [income, expense] = await Promise.all([
-    transactionRepository.sumAmountByTypeName('Income', range),
-    transactionRepository.sumAmountByTypeName('Expense', range),
-  ])
-
-  const totalIncome = toAmountNumber(income._sum.amount)
-  const totalExpenses = toAmountNumber(expense._sum.amount)
+  const { income: totalIncome, expense: totalExpenses } =
+    await transactionRepository.sumIncomeAndExpense(range)
 
   return {
     totalIncome,
