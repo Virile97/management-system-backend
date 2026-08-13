@@ -77,18 +77,11 @@ describe('attendance.service', () => {
   })
 
   describe('listAttendance', () => {
-    it('returns all members with present members sorted before absents when range is set', async () => {
+    it('uses default name order when no search/level filter is applied', async () => {
       const from = new Date('2026-08-12')
       const to = new Date('2026-08-12')
 
-      vi.spyOn(attendanceRepository, 'findMembersPrioritizedByAttendance').mockResolvedValue([
-        {
-          id: 'm1',
-          firstName: 'Pastor',
-          middleName: null,
-          lastName: 'Admin',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
-        },
+      vi.spyOn(attendanceRepository, 'findMembers').mockResolvedValue([
         {
           id: 'm2',
           firstName: 'Emmanuel',
@@ -96,7 +89,18 @@ describe('attendance.service', () => {
           lastName: 'Boateng',
           groups: [{ level: { id: 'l1', name: 'Men' } }],
         },
+        {
+          id: 'm1',
+          firstName: 'Pastor',
+          middleName: null,
+          lastName: 'Admin',
+          groups: [{ level: { id: 'l1', name: 'Men' } }],
+        },
       ])
+      const prioritizeSpy = vi.spyOn(
+        attendanceRepository,
+        'findMembersPrioritizedByAttendance',
+      )
       vi.spyOn(attendanceRepository, 'countMembers').mockImplementation(async (filter = {}) =>
         Object.keys(filter).length === 0 ? 3 : 2,
       )
@@ -133,24 +137,73 @@ describe('attendance.service', () => {
 
       const result = await attendanceService.listAttendance({ from, to })
 
+      expect(attendanceRepository.findMembers).toHaveBeenCalled()
+      expect(prioritizeSpy).not.toHaveBeenCalled()
+      expect(result.items).toHaveLength(2)
+      expect(result.items[0].member.id).toBe('m2')
+      expect(result.items[1].member.id).toBe('m1')
+      expect(result.levels[0]).toEqual({ id: null, name: 'All Members', count: 3 })
+      expect(result.meta.total).toBe(2)
+    })
+
+    it('prioritizes present members when a search or level filter is applied', async () => {
+      const from = new Date('2026-08-12')
+      const to = new Date('2026-08-12')
+
+      vi.spyOn(attendanceRepository, 'findMembersPrioritizedByAttendance').mockResolvedValue([
+        {
+          id: 'm1',
+          firstName: 'Pastor',
+          middleName: null,
+          lastName: 'Admin',
+          groups: [{ level: { id: 'l1', name: 'Men' } }],
+        },
+        {
+          id: 'm2',
+          firstName: 'Emmanuel',
+          middleName: null,
+          lastName: 'Boateng',
+          groups: [{ level: { id: 'l1', name: 'Men' } }],
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'countMembers').mockResolvedValue(2)
+      vi.spyOn(attendanceRepository, 'findAttendancesByMemberIds').mockResolvedValue([
+        {
+          id: 'a1',
+          memberId: 'm1',
+          date: from,
+          morningIn: new Date('2026-08-12T08:00:00.000Z'),
+          morningOut: new Date('2026-08-12T12:00:00.000Z'),
+          afternoonIn: new Date('2026-08-12T13:00:00.000Z'),
+          afternoonOut: new Date('2026-08-12T17:00:00.000Z'),
+        },
+      ])
+      vi.spyOn(attendanceRepository, 'findAllAttendancesInRange').mockResolvedValue([])
+      vi.spyOn(attendanceRepository, 'countMembersGroupedByLevel').mockResolvedValue([])
+      vi.spyOn(attendanceRepository, 'findAllLevels').mockResolvedValue([])
+
+      const result = await attendanceService.listAttendance({
+        from,
+        to,
+        level: 'l1',
+      })
+
       expect(attendanceRepository.findMembersPrioritizedByAttendance).toHaveBeenCalledWith(
         expect.objectContaining({
+          level: 'l1',
           from: new Date(Date.UTC(2026, 7, 12)),
           to: new Date(Date.UTC(2026, 7, 12)),
         }),
       )
-      expect(result.items).toHaveLength(2)
       expect(result.items[0].attendance.status).toBe('full_day')
       expect(result.items[1].attendance.status).toBe('absent')
-      expect(result.levels[0]).toEqual({ id: null, name: 'All Members', count: 3 })
-      expect(result.meta.total).toBe(2)
     })
 
     it('returns attendances arrays for a multi-day range', async () => {
       const from = new Date('2026-08-11')
       const to = new Date('2026-08-12')
 
-      vi.spyOn(attendanceRepository, 'findMembersPrioritizedByAttendance').mockResolvedValue([
+      vi.spyOn(attendanceRepository, 'findMembers').mockResolvedValue([
         {
           id: 'm1',
           firstName: 'Pastor',

@@ -151,8 +151,8 @@ async function listAttendance(query) {
   const fromDay = attendanceRepository.toDateOnly(from)
   const toDay = attendanceRepository.toDateOnly(to)
   const singleDay = fromDay.getTime() === toDay.getTime()
-  // from/to is the range filter — return everyone, present first then absent.
-  const prioritizeAttendance = Boolean(from && to)
+  // Present-first only when a list filter is applied (search/level). Default order is name.
+  const prioritizeAttendance = Boolean(search || level)
 
   const [members, total, allMemberCount, attendancesForSummary, levelRows, levels] =
     await Promise.all([

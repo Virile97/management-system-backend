@@ -25,6 +25,7 @@ const envSchema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
+  ATTENDANCE_UPSERT_RATE_LIMIT_MAX: z.coerce.number().default(100),
 
   RESEND_API_KEY: z.string().optional().default(''),
   RESEND_FROM: z.string().optional().default(''),
