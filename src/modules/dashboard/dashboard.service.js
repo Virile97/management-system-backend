@@ -115,6 +115,19 @@ async function getRecentActivity(limit) {
   return logs.map(toActivityItem)
 }
 
+async function searchRecentActivity({ search, limit = 20 } = {}) {
+  const q = typeof search === 'string' ? search.trim() : ''
+  if (!q) return []
+
+  const lmt = Number(limit) || 20
+  const logs = await dashboardRepository.findActivityLogs({
+    search: q,
+    limit: lmt,
+  })
+
+  return logs.map(toActivityItem)
+}
+
 function parseRangeWeeks(range) {
   return parseInt(range, 10)
 }
@@ -243,6 +256,7 @@ module.exports = {
   getMemberBreakdown,
   getFinanceSummary,
   getRecentActivity,
+  searchRecentActivity,
   getAttendanceSummary,
   _clearStatsCache: clearDashboardCaches,
   _clearDashboardCaches: clearDashboardCaches,

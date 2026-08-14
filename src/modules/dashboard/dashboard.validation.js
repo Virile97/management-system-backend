@@ -16,4 +16,11 @@ const overviewSchema = z.object({
   }),
 })
 
-module.exports = { overviewSchema }
+const activitySearchSchema = z.object({
+  query: z.object({
+    search: z.string().trim().min(1).max(100),
+    limit: z.coerce.number().int().positive().max(50).optional().default(20),
+  }),
+})
+
+module.exports = { overviewSchema, activitySearchSchema }

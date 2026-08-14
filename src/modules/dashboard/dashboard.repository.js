@@ -92,20 +92,62 @@ async function sumTransactionsByMonthAndType(from) {
   }))
 }
 
-function findRecentActivityLogs(limit) {
+const ACTIVITY_LOG_SELECT = {
+  id: true,
+  action: true,
+  message: true,
+  detail: true,
+  createdAt: true,
+  actor: { select: { id: true, name: true, email: true } },
+}
+
+function matchingActivityActions(search) {
+  const q = String(search || '')
+    .trim()
+    .toLowerCase()
+  if (!q) return []
+
+  return Object.values(ActivityAction).filter((action) => {
+    if (action === ActivityAction.USER_LOGGED_IN) return false
+    const normalized = action.toLowerCase()
+    return (
+      normalized.includes(q) ||
+      normalized.replace(/_/g, ' ').includes(q) ||
+      normalized.replace(/_/g, '').includes(q.replace(/\s+/g, ''))
+    )
+  })
+}
+
+/**
+ * Recent activity feed, optionally filtered by message / detail / actor / action.
+ */
+function findActivityLogs({ search, limit } = {}) {
+  const q = typeof search === 'string' ? search.trim() : ''
+  const where = {
+    action: { not: ActivityAction.USER_LOGGED_IN },
+  }
+
+  if (q) {
+    const actionMatches = matchingActivityActions(q)
+    where.OR = [
+      { message: { contains: q, mode: 'insensitive' } },
+      { detail: { contains: q, mode: 'insensitive' } },
+      { actor: { name: { contains: q, mode: 'insensitive' } } },
+      { actor: { email: { contains: q, mode: 'insensitive' } } },
+      ...(actionMatches.length ? [{ action: { in: actionMatches } }] : []),
+    ]
+  }
+
   return prisma.activityLog.findMany({
-    where: { action: { not: ActivityAction.USER_LOGGED_IN } },
+    where,
     orderBy: { createdAt: 'desc' },
     take: limit,
-    select: {
-      id: true,
-      action: true,
-      message: true,
-      detail: true,
-      createdAt: true,
-      actor: { select: { id: true, name: true, email: true } },
-    },
+    select: ACTIVITY_LOG_SELECT,
   })
+}
+
+function findRecentActivityLogs(limit) {
+  return findActivityLogs({ limit })
 }
 
 /**
@@ -142,6 +184,7 @@ module.exports = {
   summarizeMembersByStatus,
   sumTransactionsByTypeName,
   sumTransactionsByMonthAndType,
+  findActivityLogs,
   findRecentActivityLogs,
   countPresentMembersByDate,
 }

@@ -6,4 +6,9 @@ const getOverview = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, overview, 'Dashboard overview retrieved')
 })
 
-module.exports = { getOverview }
+const searchActivity = asyncHandler(async (req, res) => {
+  const activity = await dashboardService.searchRecentActivity(req.query)
+  return ApiResponse.success(res, activity, 'Activity search retrieved')
+})
+
+module.exports = { getOverview, searchActivity }

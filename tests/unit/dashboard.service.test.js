@@ -225,6 +225,48 @@ describe('dashboard.service', () => {
     })
   })
 
+  describe('searchRecentActivity', () => {
+    it('searches activity logs and maps them like the recent feed', async () => {
+      vi.spyOn(dashboardRepository, 'findActivityLogs').mockResolvedValue([
+        {
+          id: 'a1',
+          action: 'MEMBER_REGISTERED',
+          message: 'New member registered',
+          detail: 'Margaret Osei',
+          createdAt: new Date('2026-08-04T08:00:00Z'),
+          actor: { id: 'u1', name: 'Admin User', email: 'admin@example.com' },
+        },
+      ])
+
+      const activity = await dashboardService.searchRecentActivity({
+        search: 'Margaret',
+        limit: 10,
+      })
+
+      expect(dashboardRepository.findActivityLogs).toHaveBeenCalledWith({
+        search: 'Margaret',
+        limit: 10,
+      })
+      expect(activity).toEqual([
+        {
+          type: 'MEMBER_REGISTERED',
+          message: 'New member registered by Admin User',
+          detail: 'Margaret Osei',
+          timestamp: new Date('2026-08-04T08:00:00Z'),
+        },
+      ])
+    })
+
+    it('returns an empty array when search is blank', async () => {
+      vi.spyOn(dashboardRepository, 'findActivityLogs').mockResolvedValue([])
+
+      const activity = await dashboardService.searchRecentActivity({ search: '   ' })
+
+      expect(activity).toEqual([])
+      expect(dashboardRepository.findActivityLogs).not.toHaveBeenCalled()
+    })
+  })
+
   describe('getOverview', () => {
     it('returns one object with all dashboard sections', async () => {
       vi.useFakeTimers()
