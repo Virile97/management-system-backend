@@ -71,7 +71,14 @@ describe('transaction.service', () => {
 
       const stats = await transactionService.getStats()
 
-      expect(stats).toEqual({ totalIncome: 21400, totalExpenses: 7770, netBalance: 13630 })
+      expect(stats).toEqual({
+        totalIncome: 21400,
+        totalExpenses: 7770,
+        netBalance: 13630,
+        totalIncomeFormatted: '₱21,400',
+        totalExpensesFormatted: '₱7,770',
+        netBalanceFormatted: '₱13,630',
+      })
     })
 
     it('defaults to 0 when there are no transactions of a type', async () => {
@@ -82,7 +89,14 @@ describe('transaction.service', () => {
 
       const stats = await transactionService.getStats()
 
-      expect(stats).toEqual({ totalIncome: 0, totalExpenses: 0, netBalance: 0 })
+      expect(stats).toEqual({
+        totalIncome: 0,
+        totalExpenses: 0,
+        netBalance: 0,
+        totalIncomeFormatted: '₱0',
+        totalExpensesFormatted: '₱0',
+        netBalanceFormatted: '₱0',
+      })
     })
   })
 

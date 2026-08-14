@@ -4,6 +4,7 @@ const { getPagination, buildMeta } = require('../../shared/utils')
 const { logActivity } = require('../../shared/utils/activity-log')
 const logger = require('../../config/logger')
 const { resolvePeriodRange, startOfMonth } = require('../../shared/utils/period-range')
+const { formatPHP } = require('../../shared/utils/currency')
 
 function toAmountNumber(decimalValue) {
   return decimalValue ? Number(decimalValue) : 0
@@ -58,11 +59,15 @@ async function getStats(query) {
   const range = resolvePeriodRange(query)
   const { income: totalIncome, expense: totalExpenses } =
     await transactionRepository.sumIncomeAndExpense(range)
+  const netBalance = totalIncome - totalExpenses
 
   return {
     totalIncome,
     totalExpenses,
-    netBalance: totalIncome - totalExpenses,
+    netBalance,
+    totalIncomeFormatted: formatPHP(totalIncome),
+    totalExpensesFormatted: formatPHP(totalExpenses),
+    netBalanceFormatted: formatPHP(netBalance),
   }
 }
 

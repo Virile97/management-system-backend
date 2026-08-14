@@ -1,5 +1,6 @@
 const dashboardRepository = require('./dashboard.repository')
 const { createMemoCache, createKeyedMemoCache } = require('../../shared/utils/memo-cache')
+const { formatPHP } = require('../../shared/utils/currency')
 
 const STATS_CACHE_TTL_MS = 60_000
 const OVERVIEW_CACHE_TTL_MS = 60_000
@@ -16,16 +17,6 @@ function startOfNextMonth(date) {
 
 function toAmountNumber(decimalValue) {
   return decimalValue ? Number(decimalValue) : 0
-}
-
-const phpFormatter = new Intl.NumberFormat('en-PH', {
-  style: 'currency',
-  currency: 'PHP',
-  minimumFractionDigits: 0,
-})
-
-function formatPHP(amount) {
-  return phpFormatter.format(amount)
 }
 
 async function computeStats() {

@@ -4,6 +4,7 @@ const { getPagination, buildMeta } = require('./pagination')
 const { hashPassword, comparePassword } = require('./password')
 const { signToken, verifyToken } = require('./jwt')
 const { toISODate, isPastDate, addDays } = require('./date')
+const { formatPHP } = require('./currency')
 
 module.exports = {
   asyncHandler,
@@ -17,4 +18,5 @@ module.exports = {
   toISODate,
   isPastDate,
   addDays,
+  formatPHP,
 }

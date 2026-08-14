@@ -39,6 +39,12 @@ function buildListFilterSql({ type, category, search, from, to }) {
       t.description ILIKE ${pattern}
       OR c.name ILIKE ${pattern}
       OR u.name ILIKE ${pattern}
+      OR EXISTS (
+        SELECT 1
+        FROM transaction_items ti
+        INNER JOIN offering_types ot ON ot.id = ti."offeringTypeId"
+        WHERE ti."transactionId" = t.id AND ot.name ILIKE ${pattern}
+      )
     )`)
   }
 
