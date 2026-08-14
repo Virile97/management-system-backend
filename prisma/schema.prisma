@@ -178,8 +178,8 @@ model Member {
 
   transactions Transaction[]
   attendances  Attendance[]
-  soulsWon     SoulWin[]      @relation("SoulWinsByWinner")
-  soulWinAsConvert SoulWin?   @relation("SoulWinAsMember")
+  soulWinsAsWinner SoulWinWinner[]
+  soulWinAsConvert SoulWin?        @relation("SoulWinAsMember")
 
   @@index([statusId])
   @@index([createdAt])
@@ -187,28 +187,46 @@ model Member {
 }
 
 model SoulWin {
-  id             String    @id @default(uuid())
+  id             String          @id @default(uuid())
   firstName      String
   middleName     String?
   lastName       String
   contact        String?
   location       String?
+  /// Approximate age of the convert at the time they were won.
+  age            Int?
+  /// Free-text occasion (e.g. "Sunday Service", "Campus Outreach") — not a separate events module.
+  event          String?
   notes          String?
-  wonAt          DateTime  @db.Date
+  wonAt          DateTime        @db.Date
   baptizedAt     DateTime?
-  winner         Member    @relation("SoulWinsByWinner", fields: [winnerMemberId], references: [id])
-  winnerMemberId String
-  member         Member?   @relation("SoulWinAsMember", fields: [memberId], references: [id])
-  memberId       String?   @unique
-  recordedByUser User?     @relation("SoulWinRecordedBy", fields: [recordedBy], references: [id])
+  winners        SoulWinWinner[]
+  member         Member?         @relation("SoulWinAsMember", fields: [memberId], references: [id])
+  memberId       String?         @unique
+  recordedByUser User?           @relation("SoulWinRecordedBy", fields: [recordedBy], references: [id])
   recordedBy     String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([wonAt])
-  @@index([winnerMemberId, wonAt])
   @@index([baptizedAt])
+  @@index([event])
   @@map("soul_wins")
+}
+
+/// Many members can share credit for one soul win.
+model SoulWinWinner {
+  soulWin   SoulWin  @relation(fields: [soulWinId], references: [id], onDelete: Cascade)
+  soulWinId String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  memberId  String
+  /// Display / primary order (0 = first / primary).
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@id([soulWinId, memberId])
+  @@index([memberId, soulWinId])
+  @@map("soul_win_winners")
 }
 
 model SoulWinningGoal {

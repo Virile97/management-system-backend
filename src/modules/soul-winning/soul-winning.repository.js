@@ -8,12 +8,22 @@ function buildWonAtFilterSql({ start, end } = {}) {
   return Prisma.join(conditions, ' AND ')
 }
 
-function buildListFilterSql({ search, status, winnerMemberId, start, end } = {}) {
+function buildListFilterSql({ search, status, winnerMemberId, event, start, end } = {}) {
   const conditions = [buildWonAtFilterSql({ start, end })]
 
   if (winnerMemberId) {
-    // winnerMemberId is a members.id UUID (same as create.winnerMemberId), not a separate winners entity id.
-    conditions.push(Prisma.sql`sw."winnerMemberId" = ${winnerMemberId}`)
+    // Filter records where this member is one of the soul winners.
+    conditions.push(Prisma.sql`EXISTS (
+      SELECT 1
+      FROM soul_win_winners sww
+      WHERE sww."soulWinId" = sw.id
+        AND sww."memberId" = ${winnerMemberId}
+    )`)
+  }
+
+  if (event) {
+    const pattern = `%${event}%`
+    conditions.push(Prisma.sql`sw.event ILIKE ${pattern}`)
   }
 
   if (search) {
@@ -24,8 +34,18 @@ function buildListFilterSql({ search, status, winnerMemberId, start, end } = {})
       OR sw."middleName" ILIKE ${pattern}
       OR sw.contact ILIKE ${pattern}
       OR sw.location ILIKE ${pattern}
-      OR w."firstName" ILIKE ${pattern}
-      OR w."lastName" ILIKE ${pattern}
+      OR sw.event ILIKE ${pattern}
+      OR EXISTS (
+        SELECT 1
+        FROM soul_win_winners sww
+        INNER JOIN members w ON w.id = sww."memberId"
+        WHERE sww."soulWinId" = sw.id
+          AND (
+            w."firstName" ILIKE ${pattern}
+            OR w."lastName" ILIKE ${pattern}
+            OR w."middleName" ILIKE ${pattern}
+          )
+      )
     )`)
   }
 
@@ -63,7 +83,24 @@ const derivedStatusSql = Prisma.sql`
   END
 `
 
+const winnersJsonSql = Prisma.sql`
+  COALESCE((
+    SELECT json_agg(
+      json_build_object(
+        'id', w.id,
+        'firstName', w."firstName",
+        'lastName', w."lastName"
+      )
+      ORDER BY sww."sortOrder" ASC, w."lastName" ASC, w."firstName" ASC
+    )
+    FROM soul_win_winners sww
+    INNER JOIN members w ON w.id = sww."memberId"
+    WHERE sww."soulWinId" = sw.id
+  ), '[]'::json)
+`
+
 function mapRecordRow(row) {
+  const winners = Array.isArray(row.winners) ? row.winners : []
   return {
     id: row.id,
     firstName: row.firstName,
@@ -71,43 +108,56 @@ function mapRecordRow(row) {
     lastName: row.lastName,
     contact: row.contact,
     location: row.location,
+    age: row.age == null ? null : Number(row.age),
+    event: row.event ?? null,
     notes: row.notes,
     wonAt: row.wonAt,
     baptizedAt: row.baptizedAt,
     status: row.status,
     memberId: row.memberId,
-    winner: row.winner,
+    winners,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
 }
 
-async function findMany({ skip, take, search, status, winnerMemberId, start, end, sort, order }) {
-  const whereSql = buildListFilterSql({ search, status, winnerMemberId, start, end })
+const recordSelectSql = Prisma.sql`
+  sw.id,
+  sw."firstName",
+  sw."middleName",
+  sw."lastName",
+  sw.contact,
+  sw.location,
+  sw.age,
+  sw.event,
+  sw.notes,
+  sw."wonAt",
+  sw."baptizedAt",
+  sw."memberId",
+  sw."createdAt",
+  sw."updatedAt",
+  ${derivedStatusSql} AS status,
+  ${winnersJsonSql} AS winners
+`
+
+async function findMany({
+  skip,
+  take,
+  search,
+  status,
+  winnerMemberId,
+  event,
+  start,
+  end,
+  sort,
+  order,
+}) {
+  const whereSql = buildListFilterSql({ search, status, winnerMemberId, event, start, end })
   const orderSql = buildRecordsOrderSql(sort, order)
 
   const rows = await prisma.$queryRaw`
-    SELECT
-      sw.id,
-      sw."firstName",
-      sw."middleName",
-      sw."lastName",
-      sw.contact,
-      sw.location,
-      sw.notes,
-      sw."wonAt",
-      sw."baptizedAt",
-      sw."memberId",
-      sw."createdAt",
-      sw."updatedAt",
-      ${derivedStatusSql} AS status,
-      json_build_object(
-        'id', w.id,
-        'firstName', w."firstName",
-        'lastName', w."lastName"
-      ) AS winner
+    SELECT ${recordSelectSql}
     FROM soul_wins sw
-    INNER JOIN members w ON w.id = sw."winnerMemberId"
     LEFT JOIN members m ON m.id = sw."memberId"
     LEFT JOIN statuses s ON s.id = m."statusId"
     WHERE ${whereSql}
@@ -118,13 +168,12 @@ async function findMany({ skip, take, search, status, winnerMemberId, start, end
   return rows.map(mapRecordRow)
 }
 
-async function count({ search, status, winnerMemberId, start, end }) {
-  const whereSql = buildListFilterSql({ search, status, winnerMemberId, start, end })
+async function count({ search, status, winnerMemberId, event, start, end }) {
+  const whereSql = buildListFilterSql({ search, status, winnerMemberId, event, start, end })
 
   const rows = await prisma.$queryRaw`
     SELECT COUNT(*)::int AS total
     FROM soul_wins sw
-    INNER JOIN members w ON w.id = sw."winnerMemberId"
     LEFT JOIN members m ON m.id = sw."memberId"
     LEFT JOIN statuses s ON s.id = m."statusId"
     WHERE ${whereSql}
@@ -135,28 +184,8 @@ async function count({ search, status, winnerMemberId, start, end }) {
 
 async function findById(id) {
   const rows = await prisma.$queryRaw`
-    SELECT
-      sw.id,
-      sw."firstName",
-      sw."middleName",
-      sw."lastName",
-      sw.contact,
-      sw.location,
-      sw.notes,
-      sw."wonAt",
-      sw."baptizedAt",
-      sw."memberId",
-      sw."winnerMemberId",
-      sw."createdAt",
-      sw."updatedAt",
-      ${derivedStatusSql} AS status,
-      json_build_object(
-        'id', w.id,
-        'firstName', w."firstName",
-        'lastName', w."lastName"
-      ) AS winner
+    SELECT ${recordSelectSql}
     FROM soul_wins sw
-    INNER JOIN members w ON w.id = sw."winnerMemberId"
     LEFT JOIN members m ON m.id = sw."memberId"
     LEFT JOIN statuses s ON s.id = m."statusId"
     WHERE sw.id = ${id}
@@ -167,11 +196,25 @@ async function findById(id) {
 }
 
 function findRawById(id) {
-  return prisma.soulWin.findUnique({ where: { id } })
+  return prisma.soulWin.findUnique({
+    where: { id },
+    include: {
+      winners: { select: { memberId: true, sortOrder: true } },
+    },
+  })
 }
 
 function memberExists(id) {
   return prisma.member.findUnique({ where: { id }, select: { id: true } }).then(Boolean)
+}
+
+async function membersExist(ids = []) {
+  if (!ids.length) return false
+  const unique = [...new Set(ids)]
+  const count = await prisma.member.count({
+    where: { id: { in: unique } },
+  })
+  return count === unique.length
 }
 
 function findActiveStatusId() {
@@ -209,6 +252,7 @@ async function summarizeOverview({ start, end } = {}) {
 
 /**
  * Winner cards: SQL aggregates with optional search + pagination.
+ * Each co-winner gets full credit for the soul win.
  */
 async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}) {
   const conditions = [buildWonAtFilterSql({ start, end })]
@@ -238,14 +282,15 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
           LIMIT 1
         ) AS ministry,
         COUNT(*)::int AS "soulsShared",
-        COUNT(*) FILTER (WHERE sw."memberId" IS NOT NULL AND s.name = 'Active')::int AS "nowActive",
+        COUNT(*) FILTER (WHERE sw."memberId" IS NOT NULL)::int AS "nowActive",
         COUNT(*) FILTER (WHERE sw."memberId" IS NULL)::int AS "newConverts",
         COUNT(*) FILTER (
           WHERE sw."memberId" IS NULL
              OR (sw."memberId" IS NOT NULL AND s.name = 'Inactive')
         )::int AS "needFollowUp"
-      FROM soul_wins sw
-      INNER JOIN members w ON w.id = sw."winnerMemberId"
+      FROM soul_win_winners sww
+      INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
+      INNER JOIN members w ON w.id = sww."memberId"
       LEFT JOIN members m ON m.id = sw."memberId"
       LEFT JOIN statuses s ON s.id = m."statusId"
       WHERE ${whereSql}
@@ -257,8 +302,9 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
       SELECT COUNT(*)::int AS total
       FROM (
         SELECT w.id
-        FROM soul_wins sw
-        INNER JOIN members w ON w.id = sw."winnerMemberId"
+        FROM soul_win_winners sww
+        INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
+        INNER JOIN members w ON w.id = sww."memberId"
         WHERE ${whereSql}
         GROUP BY w.id
       ) winners
@@ -267,8 +313,9 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
       SELECT COALESCE(SUM(c.cnt), 0)::int AS "totalSouls"
       FROM (
         SELECT COUNT(*)::int AS cnt
-        FROM soul_wins sw
-        INNER JOIN members w ON w.id = sw."winnerMemberId"
+        FROM soul_win_winners sww
+        INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
+        INNER JOIN members w ON w.id = sww."memberId"
         WHERE ${whereSql}
         GROUP BY w.id
       ) c
@@ -320,8 +367,16 @@ async function sumTrendByDay({ start, end }) {
   }
 }
 
+function buildBaptizedAtFilterSql({ start, end } = {}) {
+  const conditions = [Prisma.sql`sw."baptizedAt" IS NOT NULL`]
+  if (start) conditions.push(Prisma.sql`sw."baptizedAt" >= ${start}`)
+  if (end) conditions.push(Prisma.sql`sw."baptizedAt" <= ${end}`)
+  return Prisma.join(conditions, ' AND ')
+}
+
 async function sumTrendByMonth({ start, end }) {
   const winWhere = buildWonAtFilterSql({ start, end })
+  const baptizedWhere = buildBaptizedAtFilterSql({ start, end })
 
   const [wins, baptisms] = await Promise.all([
     prisma.$queryRaw`
@@ -340,9 +395,7 @@ async function sumTrendByMonth({ start, end }) {
         EXTRACT(MONTH FROM sw."baptizedAt")::int AS month,
         COUNT(*)::int AS count
       FROM soul_wins sw
-      WHERE sw."baptizedAt" IS NOT NULL
-        AND sw."baptizedAt" >= ${start}
-        AND sw."baptizedAt" <= ${end}
+      WHERE ${baptizedWhere}
       GROUP BY 1, 2
       ORDER BY 1, 2
     `,
@@ -362,6 +415,85 @@ async function sumTrendByMonth({ start, end }) {
   }
 }
 
+/**
+ * Baptisms in range grouped by day, with current Active/Inactive status of those members.
+ */
+async function sumBaptismRetentionByDay({ start, end }) {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      (sw."baptizedAt" AT TIME ZONE 'UTC')::date AS day,
+      COUNT(*)::int AS baptized,
+      COUNT(*) FILTER (WHERE s.name = 'Active')::int AS active,
+      COUNT(*) FILTER (WHERE s.name = 'Inactive')::int AS inactive
+    FROM soul_wins sw
+    INNER JOIN members m ON m.id = sw."memberId"
+    LEFT JOIN statuses s ON s.id = m."statusId"
+    WHERE sw."baptizedAt" IS NOT NULL
+      AND sw."baptizedAt" >= ${start}
+      AND sw."baptizedAt" <= ${end}
+    GROUP BY 1
+    ORDER BY 1
+  `
+
+  return rows.map((row) => ({
+    day: row.day,
+    baptized: Number(row.baptized),
+    active: Number(row.active),
+    inactive: Number(row.inactive),
+  }))
+}
+
+async function sumBaptismRetentionByMonth({ start, end }) {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      EXTRACT(YEAR FROM sw."baptizedAt")::int AS year,
+      EXTRACT(MONTH FROM sw."baptizedAt")::int AS month,
+      COUNT(*)::int AS baptized,
+      COUNT(*) FILTER (WHERE s.name = 'Active')::int AS active,
+      COUNT(*) FILTER (WHERE s.name = 'Inactive')::int AS inactive
+    FROM soul_wins sw
+    INNER JOIN members m ON m.id = sw."memberId"
+    LEFT JOIN statuses s ON s.id = m."statusId"
+    WHERE sw."baptizedAt" IS NOT NULL
+      AND sw."baptizedAt" >= ${start}
+      AND sw."baptizedAt" <= ${end}
+    GROUP BY 1, 2
+    ORDER BY 1, 2
+  `
+
+  return rows.map((row) => ({
+    year: Number(row.year),
+    month: Number(row.month),
+    baptized: Number(row.baptized),
+    active: Number(row.active),
+    inactive: Number(row.inactive),
+  }))
+}
+
+async function summarizeBaptismRetention({ start, end } = {}) {
+  const conditions = [Prisma.sql`sw."baptizedAt" IS NOT NULL`]
+  if (start) conditions.push(Prisma.sql`sw."baptizedAt" >= ${start}`)
+  if (end) conditions.push(Prisma.sql`sw."baptizedAt" <= ${end}`)
+  const whereSql = Prisma.join(conditions, ' AND ')
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      COUNT(*)::int AS baptized,
+      COUNT(*) FILTER (WHERE s.name = 'Active')::int AS active,
+      COUNT(*) FILTER (WHERE s.name = 'Inactive')::int AS inactive
+    FROM soul_wins sw
+    INNER JOIN members m ON m.id = sw."memberId"
+    LEFT JOIN statuses s ON s.id = m."statusId"
+    WHERE ${whereSql}
+  `
+
+  return {
+    baptized: Number(rows[0]?.baptized ?? 0),
+    active: Number(rows[0]?.active ?? 0),
+    inactive: Number(rows[0]?.inactive ?? 0),
+  }
+}
+
 async function sumLeaderboard({ start, end, limit = 10 }) {
   const whereSql = buildWonAtFilterSql({ start, end })
 
@@ -371,8 +503,9 @@ async function sumLeaderboard({ start, end, limit = 10 }) {
       w."firstName",
       w."lastName",
       COUNT(*)::int AS count
-    FROM soul_wins sw
-    INNER JOIN members w ON w.id = sw."winnerMemberId"
+    FROM soul_win_winners sww
+    INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
+    INNER JOIN members w ON w.id = sww."memberId"
     WHERE ${whereSql}
     GROUP BY w.id, w."firstName", w."lastName"
     ORDER BY count DESC, w."lastName" ASC
@@ -387,12 +520,41 @@ async function sumLeaderboard({ start, end, limit = 10 }) {
   }))
 }
 
-function create(data) {
-  return prisma.soulWin.create({ data })
+function create({ winnerMemberIds, ...data }) {
+  return prisma.soulWin.create({
+    data: {
+      ...data,
+      winners: {
+        create: winnerMemberIds.map((memberId, index) => ({
+          memberId,
+          sortOrder: index,
+        })),
+      },
+    },
+  })
 }
 
-function updateById(id, data) {
-  return prisma.soulWin.update({ where: { id }, data })
+async function updateById(id, { winnerMemberIds, ...data }) {
+  if (!winnerMemberIds) {
+    return prisma.soulWin.update({ where: { id }, data })
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.soulWinWinner.deleteMany({ where: { soulWinId: id } })
+    await tx.soulWin.update({
+      where: { id },
+      data: {
+        ...data,
+        winners: {
+          create: winnerMemberIds.map((memberId, index) => ({
+            memberId,
+            sortOrder: index,
+          })),
+        },
+      },
+    })
+    return tx.soulWin.findUnique({ where: { id } })
+  })
 }
 
 /**
@@ -501,11 +663,15 @@ module.exports = {
   findById,
   findRawById,
   memberExists,
+  membersExist,
   findActiveStatusId,
   summarizeOverview,
   summarizeWinners,
   sumTrendByDay,
   sumTrendByMonth,
+  sumBaptismRetentionByDay,
+  sumBaptismRetentionByMonth,
+  summarizeBaptismRetention,
   sumLeaderboard,
   create,
   updateById,
