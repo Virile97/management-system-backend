@@ -7,6 +7,18 @@ const server = app.listen(env.PORT, () => {
   logger.info(`Server running on port ${env.PORT} in ${env.NODE_ENV} mode`)
 })
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    logger.error(
+      { port: env.PORT },
+      `Port ${env.PORT} is already in use. Stop the other process, then restart.`,
+    )
+  } else {
+    logger.error({ err }, 'Server failed to start')
+  }
+  process.exit(1)
+})
+
 async function shutdown(signal) {
   logger.info(`${signal} received. Shutting down gracefully...`)
   server.close(async () => {
@@ -21,5 +33,4 @@ process.on('SIGINT', () => shutdown('SIGINT'))
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'Unhandled promise rejection')
-  process.exit(1)
 })

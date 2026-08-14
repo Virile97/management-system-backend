@@ -5,6 +5,7 @@ const { dashboardRoutes } = require('../modules/dashboard')
 const { memberRoutes } = require('../modules/members')
 const { transactionRoutes } = require('../modules/transactions')
 const { attendanceRoutes } = require('../modules/attendance')
+const { soulWinningRoutes } = require('../modules/soul-winning')
 
 const router = Router()
 
@@ -18,5 +19,6 @@ router.use('/dashboard', dashboardRoutes)
 router.use('/members', memberRoutes)
 router.use('/transactions', transactionRoutes)
 router.use('/attendance', attendanceRoutes)
+router.use('/soul-winning', soulWinningRoutes)
 
 module.exports = router

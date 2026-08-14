@@ -35,6 +35,10 @@ function startOfYear(date) {
   return new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0)
 }
 
+function endOfYear(date) {
+  return new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999)
+}
+
 // Resolves a period tab (today/week/month/year/all/custom) into a concrete
 // { start, end } Date range. `start`/`end` are null for `all`, meaning
 // unbounded. `custom` uses the provided from/to as-is (end widened to the
@@ -71,4 +75,6 @@ module.exports = {
   endOfWeek,
   startOfMonth,
   endOfMonth,
+  startOfYear,
+  endOfYear,
 }

@@ -29,6 +29,8 @@ model User {
   membersAdded         Member[]             @relation("MemberAddedBy")
   transactionsRecorded Transaction[]        @relation("TransactionRecordedBy")
   attendancesRecorded  Attendance[]         @relation("AttendanceRecordedBy")
+  soulWinsRecorded     SoulWin[]            @relation("SoulWinRecordedBy")
+  soulWinningGoals     SoulWinningGoal[]    @relation("SoulWinningGoalCreatedBy")
   activityLogs         ActivityLog[]
   refreshTokens        RefreshToken[]
   passwordSetupTokens  PasswordSetupToken[]
@@ -75,6 +77,8 @@ enum ActivityAction {
   INCOME_RECORDED
   EXPENSE_RECORDED
   USER_LOGGED_IN
+  SOUL_WON
+  SOUL_BAPTIZED
 }
 
 model ActivityLog {
@@ -174,10 +178,54 @@ model Member {
 
   transactions Transaction[]
   attendances  Attendance[]
+  soulsWon     SoulWin[]      @relation("SoulWinsByWinner")
+  soulWinAsConvert SoulWin?   @relation("SoulWinAsMember")
 
   @@index([statusId])
   @@index([createdAt])
   @@map("members")
+}
+
+model SoulWin {
+  id             String    @id @default(uuid())
+  firstName      String
+  middleName     String?
+  lastName       String
+  contact        String?
+  location       String?
+  notes          String?
+  wonAt          DateTime  @db.Date
+  baptizedAt     DateTime?
+  winner         Member    @relation("SoulWinsByWinner", fields: [winnerMemberId], references: [id])
+  winnerMemberId String
+  member         Member?   @relation("SoulWinAsMember", fields: [memberId], references: [id])
+  memberId       String?   @unique
+  recordedByUser User?     @relation("SoulWinRecordedBy", fields: [recordedBy], references: [id])
+  recordedBy     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([wonAt])
+  @@index([winnerMemberId, wonAt])
+  @@index([baptizedAt])
+  @@map("soul_wins")
+}
+
+model SoulWinningGoal {
+  id            String   @id @default(uuid())
+  period        String
+  startAt       DateTime
+  endAt         DateTime
+  targetCount   Int
+  year          Int?     @unique
+  createdByUser User?    @relation("SoulWinningGoalCreatedBy", fields: [createdBy], references: [id])
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([period, startAt, endAt])
+  @@index([startAt, endAt])
+  @@map("soul_winning_goals")
 }
 
 model TransactionType {
