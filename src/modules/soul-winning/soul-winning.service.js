@@ -484,6 +484,7 @@ async function listWinners(query = {}) {
       name: fullName(row),
       firstName: row.firstName,
       lastName: row.lastName,
+      ministries: row.ministries,
       ministry: row.ministry,
       servingSince: row.servingSince,
       soulsShared: row.soulsShared,
@@ -613,6 +614,7 @@ async function getTrends(query = {}) {
     baptismMonthly,
     baptismSummary,
     leaderboard,
+    byEvent,
   ] = await Promise.all([
     soulWinningRepository.sumTrendByDay({ start: daily.start, end: daily.end }),
     monthlyWindow.empty
@@ -633,6 +635,11 @@ async function getTrends(query = {}) {
       start: periodRange.start,
       end: periodRange.end,
       limit: 10,
+    }),
+    soulWinningRepository.sumByEvent({
+      start: periodRange.start,
+      end: periodRange.end,
+      limit: 8,
     }),
   ])
 
@@ -693,6 +700,7 @@ async function getTrends(query = {}) {
     year,
     daily: daily.buckets.map(({ key: _key, date: _date, ...rest }) => rest),
     monthly: monthlyBuckets.map(({ key: _key, ...rest }) => rest),
+    byEvent,
     baptismRetention: {
       title: 'Baptism vs. Active Retention',
       summary: {

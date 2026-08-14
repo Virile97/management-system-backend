@@ -189,6 +189,7 @@ describe('soul-winning.service', () => {
         inactive: 0,
       })
       vi.spyOn(soulWinningRepository, 'sumLeaderboard').mockResolvedValue([])
+      vi.spyOn(soulWinningRepository, 'sumByEvent').mockResolvedValue([])
     }
 
     it('builds 12 month buckets for the requested year', () => {

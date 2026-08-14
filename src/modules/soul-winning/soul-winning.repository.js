@@ -274,13 +274,17 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
         w."lastName",
         w."createdAt" AS "servingSince",
         (
-          SELECT g.role
+          SELECT COALESCE(
+            json_agg(
+              json_build_object('id', g.id, 'role', g.role)
+              ORDER BY mg."createdAt" ASC, g.role ASC
+            ),
+            '[]'::json
+          )
           FROM member_groups mg
           INNER JOIN groups g ON g.id = mg."groupId"
           WHERE mg."memberId" = w.id
-          ORDER BY mg."createdAt" ASC
-          LIMIT 1
-        ) AS ministry,
+        ) AS ministries,
         COUNT(*)::int AS "soulsShared",
         COUNT(*) FILTER (WHERE sw."memberId" IS NOT NULL)::int AS "nowActive",
         COUNT(*) FILTER (WHERE sw."memberId" IS NULL)::int AS "newConverts",
@@ -323,17 +327,22 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
   ])
 
   return {
-    items: rows.map((row) => ({
-      id: row.id,
-      firstName: row.firstName,
-      lastName: row.lastName,
-      servingSince: row.servingSince,
-      ministry: row.ministry,
-      soulsShared: Number(row.soulsShared),
-      nowActive: Number(row.nowActive),
-      newConverts: Number(row.newConverts),
-      needFollowUp: Number(row.needFollowUp),
-    })),
+    items: rows.map((row) => {
+      const ministries = Array.isArray(row.ministries) ? row.ministries : []
+      return {
+        id: row.id,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        servingSince: row.servingSince,
+        ministries,
+        // First group kept for older clients.
+        ministry: ministries[0]?.role ?? null,
+        soulsShared: Number(row.soulsShared),
+        nowActive: Number(row.nowActive),
+        newConverts: Number(row.newConverts),
+        needFollowUp: Number(row.needFollowUp),
+      }
+    }),
     total: Number(countRows[0]?.total ?? 0),
     totalSoulsShared: Number(totalRows[0]?.totalSouls ?? 0),
   }
@@ -520,6 +529,41 @@ async function sumLeaderboard({ start, end, limit = 10 }) {
   }))
 }
 
+/**
+ * Event performance for the period — which occasions produced POF / baptisms.
+ */
+async function sumByEvent({ start, end, limit = 8 } = {}) {
+  const whereSql = buildWonAtFilterSql({ start, end })
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      COALESCE(NULLIF(TRIM(sw.event), ''), 'Unspecified') AS event,
+      COUNT(*)::int AS "professionsOfFaith",
+      COUNT(*) FILTER (WHERE sw."memberId" IS NOT NULL)::int AS baptism,
+      COUNT(*) FILTER (
+        WHERE sw."memberId" IS NOT NULL AND s.name = 'Active'
+      )::int AS "activeRetention",
+      COUNT(*) FILTER (
+        WHERE sw."memberId" IS NOT NULL AND s.name = 'Inactive'
+      )::int AS "wentInactive"
+    FROM soul_wins sw
+    LEFT JOIN members m ON m.id = sw."memberId"
+    LEFT JOIN statuses s ON s.id = m."statusId"
+    WHERE ${whereSql}
+    GROUP BY 1
+    ORDER BY "professionsOfFaith" DESC, event ASC
+    LIMIT ${limit}
+  `
+
+  return rows.map((row) => ({
+    event: row.event,
+    professionsOfFaith: Number(row.professionsOfFaith),
+    baptism: Number(row.baptism),
+    activeRetention: Number(row.activeRetention),
+    wentInactive: Number(row.wentInactive),
+  }))
+}
+
 function create({ winnerMemberIds, ...data }) {
   return prisma.soulWin.create({
     data: {
@@ -673,6 +717,7 @@ module.exports = {
   sumBaptismRetentionByMonth,
   summarizeBaptismRetention,
   sumLeaderboard,
+  sumByEvent,
   create,
   updateById,
   baptize,
