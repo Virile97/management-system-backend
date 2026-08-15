@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client')
+const { NBC_TEACHER_GROUP_ROLE } = require('../src/modules/new-believers/new-believers.constants')
 const bcrypt = require('bcryptjs')
 const crypto = require('crypto')
 
@@ -71,7 +72,14 @@ async function seedLookups() {
     })
   }
 
-  const groupRoles = ['Choir', 'Ushers', 'Youth', 'Elders', "Women's Ministry"]
+  const groupRoles = [
+    'Choir',
+    'Ushers',
+    'Youth',
+    'Elders',
+    "Women's Ministry",
+    NBC_TEACHER_GROUP_ROLE,
+  ]
   const groups = {}
   for (const role of groupRoles) {
     const id = seedUuid(`group:${role}`)
@@ -564,6 +572,157 @@ async function seedAttendance(admin, members) {
   }
 }
 
+async function seedNewBelieversClass(members, groups) {
+  const lessons = [
+    {
+      sortOrder: 1,
+      title: 'Assurance of Salvation',
+      description:
+        'Understanding the certainty of eternal life through faith in Christ.',
+    },
+    {
+      sortOrder: 2,
+      title: "The Bible — God's Word",
+      description:
+        'How Scripture was given, its authority, and how to read it daily.',
+    },
+    {
+      sortOrder: 3,
+      title: 'Prayer',
+      description:
+        'Communicating with God — adoration, confession, thanksgiving, and supplication.',
+    },
+    {
+      sortOrder: 4,
+      title: 'The Holy Spirit',
+      description: "The person and work of the Holy Spirit in a believer's life.",
+    },
+    {
+      sortOrder: 5,
+      title: 'Water Baptism',
+      description:
+        'The meaning and importance of baptism as a public declaration of faith.',
+    },
+    {
+      sortOrder: 6,
+      title: "The Lord's Supper",
+      description:
+        'Understanding communion as a remembrance and proclamation of Christ.',
+    },
+    {
+      sortOrder: 7,
+      title: 'The Church & Fellowship',
+      description:
+        'Why belonging to a local church body matters for growth and accountability.',
+    },
+    {
+      sortOrder: 8,
+      title: 'Giving & Stewardship',
+      description:
+        "Biblical principles of tithing, offerings, and managing God's resources.",
+    },
+    {
+      sortOrder: 9,
+      title: 'Witnessing & Evangelism',
+      description: 'How to share your testimony and the Gospel with confidence.',
+    },
+    {
+      sortOrder: 10,
+      title: 'Spiritual Warfare',
+      description: 'Standing firm against the enemy.',
+    },
+    {
+      sortOrder: 11,
+      title: 'Discipleship',
+      description: 'Growing and helping others grow in Christ.',
+    },
+    {
+      sortOrder: 12,
+      title: 'Living the Christian Life',
+      description: 'Walking daily as a follower of Jesus.',
+    },
+  ]
+
+  const lessonRows = {}
+  for (const lesson of lessons) {
+    const id = seedUuid(`nbc-lesson:${lesson.sortOrder}`)
+    lessonRows[lesson.sortOrder] = await prisma.nbcLesson.upsert({
+      where: { sortOrder: lesson.sortOrder },
+      update: {
+        title: lesson.title,
+        description: lesson.description,
+        isActive: true,
+      },
+      create: { id, ...lesson },
+    })
+  }
+
+  const teacherGroup = groups[NBC_TEACHER_GROUP_ROLE]
+  if (!teacherGroup || members.length < 4) return
+
+  const teacherA = members[0]
+  const teacherB = members[1]
+
+  for (const teacher of [teacherA, teacherB]) {
+    await prisma.memberGroup.upsert({
+      where: {
+        memberId_groupId: { memberId: teacher.id, groupId: teacherGroup.id },
+      },
+      update: {},
+      create: { memberId: teacher.id, groupId: teacherGroup.id },
+    })
+  }
+
+  const studentSpecs = [
+    { member: members[2], teacher: teacherA, lesson: 4, status: 'ON_TRACK' },
+    { member: members[3], teacher: teacherA, lesson: 7, status: 'ON_TRACK' },
+    ...(members[4]
+      ? [{ member: members[4], teacher: teacherA, lesson: 2, status: 'BEHIND' }]
+      : []),
+    ...(members[5]
+      ? [{ member: members[5], teacher: teacherA, lesson: 9, status: 'ON_TRACK' }]
+      : []),
+    ...(members[6]
+      ? [{ member: members[6], teacher: teacherB, lesson: 6, status: 'ON_TRACK' }]
+      : []),
+    ...(members[7]
+      ? [{ member: members[7], teacher: teacherB, lesson: 3, status: 'BEHIND' }]
+      : []),
+    ...(members[8]
+      ? [{ member: members[8], teacher: teacherB, lesson: 11, status: 'ADVANCED' }]
+      : []),
+  ]
+
+  for (const spec of studentSpecs) {
+    await prisma.member.update({
+      where: { id: spec.member.id },
+      data: { isNewBeliever: true },
+    })
+
+    const existing = await prisma.nbcEnrollment.findUnique({
+      where: { studentId: spec.member.id },
+    })
+    if (existing) continue
+
+    const enrollment = await prisma.nbcEnrollment.create({
+      data: {
+        studentId: spec.member.id,
+        teacherId: spec.teacher.id,
+        currentLessonId: lessonRows[spec.lesson].id,
+        status: spec.status,
+      },
+    })
+
+    await prisma.nbcLessonEvent.create({
+      data: {
+        enrollmentId: enrollment.id,
+        toLessonId: lessonRows[spec.lesson].id,
+        type: 'ENROLL',
+      },
+    })
+  }
+}
+
 async function main() {
   const admin = await seedAdmin()
   const { statuses, types, categories, groups, levels, lighthouseGroups, offeringTypes } =
@@ -574,6 +733,7 @@ async function main() {
   await seedMemberOfferingHistory(admin, members, types, categories, offeringTypes)
   await seedMemberGroupAssignments(members, groups, levels, lighthouseGroups)
   await seedAttendance(admin, members)
+  await seedNewBelieversClass(members, groups)
 
   console.log('Seed complete.')
 }

@@ -6,6 +6,7 @@ const { memberRoutes } = require('../modules/members')
 const { transactionRoutes } = require('../modules/transactions')
 const { attendanceRoutes } = require('../modules/attendance')
 const { soulWinningRoutes } = require('../modules/soul-winning')
+const { newBelieversRoutes } = require('../modules/new-believers')
 
 const router = Router()
 
@@ -20,5 +21,6 @@ router.use('/members', memberRoutes)
 router.use('/transactions', transactionRoutes)
 router.use('/attendance', attendanceRoutes)
 router.use('/soul-winning', soulWinningRoutes)
+router.use('/new-believers', newBelieversRoutes)
 
 module.exports = router

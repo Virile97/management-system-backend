@@ -167,6 +167,8 @@ model Member {
   gender      Gender?
   isBaptized  Boolean       @default(false)
   baptizedAt  DateTime?
+  /// Marks a member as a New Believers Class student (curriculum track).
+  isNewBeliever Boolean     @default(false)
   soulWinner  String?
   groups      MemberGroup[]
   status      Status?       @relation(fields: [statusId], references: [id])
@@ -180,9 +182,12 @@ model Member {
   attendances  Attendance[]
   soulWinsAsWinner SoulWinWinner[]
   soulWinAsConvert SoulWin?        @relation("SoulWinAsMember")
+  nbcEnrollmentsAsStudent NbcEnrollment[] @relation("NbcStudent")
+  nbcEnrollmentsAsTeacher NbcEnrollment[] @relation("NbcTeacher")
 
   @@index([statusId])
   @@index([createdAt])
+  @@index([isNewBeliever])
   @@map("members")
 }
 
@@ -335,4 +340,74 @@ model Attendance {
   @@index([date])
   @@index([recordedBy])
   @@map("attendances")
+}
+
+enum NbcEnrollmentStatus {
+  ON_TRACK
+  BEHIND
+  ADVANCED
+}
+
+/// Curriculum catalog for New Believers Class. Admins can add/reorder lessons.
+model NbcLesson {
+  id          String   @id @default(uuid())
+  /// Display / sequence number (1-based). Unique among active lessons.
+  sortOrder   Int
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments NbcEnrollment[]  @relation("NbcCurrentLesson")
+  eventsFrom  NbcLessonEvent[] @relation("NbcEventFromLesson")
+  eventsTo    NbcLessonEvent[] @relation("NbcEventToLesson")
+
+  @@unique([sortOrder])
+  @@index([isActive, sortOrder])
+  @@map("nbc_lessons")
+}
+
+/// One active class seat per new-believer student (member).
+/// Teachers are also members — identified by membership in the
+/// "New Believers Teachers" ministry/group (see NBC_TEACHER_GROUP_ROLE).
+model NbcEnrollment {
+  id              String              @id @default(uuid())
+  student         Member              @relation("NbcStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       String              @unique
+  teacher         Member              @relation("NbcTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  teacherId       String
+  currentLesson   NbcLesson           @relation("NbcCurrentLesson", fields: [currentLessonId], references: [id], onDelete: Restrict)
+  currentLessonId String
+  status          NbcEnrollmentStatus @default(ON_TRACK)
+  enrolledAt      DateTime            @default(now())
+  graduatedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  events          NbcLessonEvent[]
+
+  @@index([teacherId])
+  @@index([currentLessonId])
+  @@index([status])
+  @@map("nbc_enrollments")
+}
+
+/// Audit trail when a student is enrolled or moved between lessons.
+model NbcLessonEvent {
+  id           String      @id @default(uuid())
+  enrollment   NbcEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  fromLesson   NbcLesson?  @relation("NbcEventFromLesson", fields: [fromLessonId], references: [id], onDelete: SetNull)
+  fromLessonId String?
+  toLesson     NbcLesson   @relation("NbcEventToLesson", fields: [toLessonId], references: [id], onDelete: Restrict)
+  toLessonId   String
+  /// ENROLL | MOVE | COMPLETE
+  type         String
+  note         String?
+  actorUserId  String?
+  createdAt    DateTime    @default(now())
+
+  @@index([enrollmentId, createdAt])
+  @@index([toLessonId])
+  @@map("nbc_lesson_events")
 }
