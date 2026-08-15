@@ -13,6 +13,13 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().min(1, 'SUPABASE_URL is required'),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
+  SUPABASE_STORAGE_BUCKET: z.string().default('church-files'),
+
+  // File Storage upload ceiling (MB) and the cosmetic quota shown in the
+  // storage-usage widget (not enforced server-side — real Supabase plan
+  // limits aren't queryable via the client API).
+  FILE_STORAGE_MAX_UPLOAD_MB: z.coerce.number().default(500),
+  FILE_STORAGE_QUOTA_GB: z.coerce.number().default(5),
 
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   JWT_EXPIRES_IN: z.string().default('15m'),

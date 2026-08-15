@@ -34,6 +34,8 @@ model User {
   activityLogs         ActivityLog[]
   refreshTokens        RefreshToken[]
   passwordSetupTokens  PasswordSetupToken[]
+  foldersCreated       Folder[]             @relation("FolderCreatedBy")
+  filesUploaded        StorageFile[]        @relation("StorageFileUploadedBy")
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
@@ -410,4 +412,62 @@ model NbcLessonEvent {
   @@index([enrollmentId, createdAt])
   @@index([toLessonId])
   @@map("nbc_lesson_events")
+}
+
+enum StorageFileType {
+  VIDEO
+  AUDIO
+  PDF
+  IMAGE
+  DOCUMENT
+  OTHER
+}
+
+/// Real nested folder hierarchy for the shared org-wide file library.
+/// Self-referencing via parentId (null = root level).
+model Folder {
+  id            String        @id @default(uuid())
+  name          String
+  parent        Folder?       @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  parentId      String?
+  children      Folder[]      @relation("FolderChildren")
+  files         StorageFile[]
+  createdByUser User?         @relation("FolderCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([parentId])
+  @@index([parentId, name])
+  @@map("folders")
+}
+
+/// Shared org-wide file library (Supabase Storage). Visibility is not
+/// owner-restricted — any authenticated user can list/download; only ADMIN
+/// can upload/rename/delete/move. uploadedBy is kept for audit only.
+/// All access to bytes goes through short-lived signed URLs (see
+/// file-storage.service.js#getDownloadUrl) — storagePath/bucket are never
+/// exposed directly to clients.
+model StorageFile {
+  id              String          @id @default(uuid())
+  name            String
+  originalName    String
+  folder          Folder?         @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  folderId        String?
+  bucket          String
+  storagePath     String          @unique
+  mimeType        String
+  sizeBytes       BigInt
+  fileType        StorageFileType
+  tags            String[]        @default([])
+  uploadedByUser  User?           @relation("StorageFileUploadedBy", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  uploadedBy      String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([folderId])
+  @@index([fileType])
+  @@index([createdAt])
+  @@index([folderId, fileType])
+  @@map("storage_files")
 }

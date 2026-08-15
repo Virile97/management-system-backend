@@ -19,9 +19,7 @@
     "jobs:sync-member-status": "node scripts/jobs/sync-member-status.js",
     "jobs:install-member-status-cron": "bash scripts/cron/install-member-status.sh",
     "jobs:remove-member-status-cron": "bash scripts/cron/install-member-status.sh --remove",
-
-
-
+    "storage:init-bucket": "node scripts/init-storage-bucket.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
@@ -43,6 +41,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "multer": "^2.2.0",
     "pino": "^9.4.0",
     "pino-http": "^10.3.0",
     "pino-pretty": "^11.2.2",
