@@ -3,6 +3,7 @@ const {
   NBC_TEACHER_GROUP_ROLE,
   NBC_LESSON_EVENT_TYPES,
 } = require('./new-believers.constants')
+const { buildMemberNameSearchWhere } = require('../../shared/utils/member-search')
 
 const memberSelect = {
   id: true,
@@ -70,21 +71,13 @@ function listTeacherMembers() {
 
 /** New believers not yet enrolled — candidates for assignment. */
 function listAssignableStudents({ search, limit = 20 } = {}) {
-  const trimmed = String(search || '').trim()
+  const nameSearch = buildMemberNameSearchWhere(search)
+
   return prisma.member.findMany({
     where: {
       isNewBeliever: true,
       nbcEnrollmentsAsStudent: { none: {} },
-      ...(trimmed
-        ? {
-            OR: [
-              { email: { contains: trimmed, mode: 'insensitive' } },
-              { firstName: { contains: trimmed, mode: 'insensitive' } },
-              { middleName: { contains: trimmed, mode: 'insensitive' } },
-              { lastName: { contains: trimmed, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(nameSearch || {}),
     },
     select: memberSelect,
     orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
@@ -150,6 +143,23 @@ function findEnrollmentById(id) {
 function findEnrollmentByStudentId(studentId) {
   return prisma.nbcEnrollment.findUnique({
     where: { studentId },
+  })
+}
+
+function findEnrollmentJourneyByStudentId(studentId) {
+  return prisma.nbcEnrollment.findUnique({
+    where: { studentId },
+    include: {
+      teacher: { select: memberSelect },
+      currentLesson: true,
+      events: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          fromLesson: { select: { id: true, sortOrder: true, title: true } },
+          toLesson: { select: { id: true, sortOrder: true, title: true } },
+        },
+      },
+    },
   })
 }
 
@@ -264,6 +274,7 @@ module.exports = {
   listEnrollments,
   findEnrollmentById,
   findEnrollmentByStudentId,
+  findEnrollmentJourneyByStudentId,
   createEnrollment,
   moveEnrollment,
   updateEnrollment,

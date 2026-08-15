@@ -1,5 +1,9 @@
 const { Prisma } = require('@prisma/client')
 const prisma = require('../../config/prisma')
+const {
+  memberSearchTokens,
+  buildMemberNameSearchWhere,
+} = require('../../shared/utils/member-search')
 
 const memberIncludes = {
   status: { select: { id: true, name: true } },
@@ -21,14 +25,8 @@ function endOfDay(date) {
 function buildWhere({ search, status, from, to }) {
   const where = {}
 
-  if (search) {
-    where.OR = [
-      { email: { contains: search, mode: 'insensitive' } },
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { middleName: { contains: search, mode: 'insensitive' } },
-      { lastName: { contains: search, mode: 'insensitive' } },
-    ]
-  }
+  const nameSearch = buildMemberNameSearchWhere(search)
+  if (nameSearch) Object.assign(where, nameSearch)
 
   if (status) {
     where.status = { name: status }
@@ -48,13 +46,15 @@ function buildMemberFilterSql({ search, status, from, to }) {
   const conditions = [Prisma.sql`TRUE`]
 
   if (search) {
-    const pattern = `%${search}%`
-    conditions.push(Prisma.sql`(
+    for (const token of memberSearchTokens(search)) {
+      const pattern = `%${token}%`
+      conditions.push(Prisma.sql`(
       COALESCE(m.email, '') ILIKE ${pattern}
       OR m."firstName" ILIKE ${pattern}
       OR COALESCE(m."middleName", '') ILIKE ${pattern}
       OR m."lastName" ILIKE ${pattern}
     )`)
+    }
   }
 
   if (status) {

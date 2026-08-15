@@ -10,8 +10,8 @@ const overviewSchema = z.object({
 const createLessonSchema = z.object({
   body: z.object({
     title: z.string().trim().min(1).max(120),
-    description: z.string().trim().max(500).optional().nullable(),
-    sortOrder: z.coerce.number().int().positive().max(200).optional(),
+    description: z.string().trim().min(1).max(500),
+    sortOrder: z.coerce.number().int().positive().max(200),
   }),
 })
 
@@ -66,9 +66,16 @@ const assignableStudentsSchema = z.object({
   }),
 })
 
+const memberJourneySchema = z.object({
+  params: z.object({
+    memberId: z.string().uuid(),
+  }),
+})
+
 module.exports = {
   overviewSchema,
   assignableStudentsSchema,
+  memberJourneySchema,
   createLessonSchema,
   updateLessonSchema,
   createEnrollmentSchema,

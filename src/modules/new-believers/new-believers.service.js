@@ -182,23 +182,92 @@ async function searchAssignableStudents(query = {}) {
   })
 }
 
+async function getMemberJourney(memberId) {
+  const member = await repo.findMemberById(memberId)
+  if (!member) throw AppError.notFound('Member not found')
+
+  const [lessons, enrollment] = await Promise.all([
+    repo.listActiveLessons(),
+    repo.findEnrollmentJourneyByStudentId(memberId),
+  ])
+
+  if (!enrollment) {
+    return {
+      enrolled: false,
+      isNewBeliever: Boolean(member.isNewBeliever),
+      enrollment: null,
+      steps: [],
+      progress: { completed: 0, total: lessons.length, percent: 0 },
+    }
+  }
+
+  const currentOrder = enrollment.currentLesson.sortOrder
+  const arrivedAtByLessonId = {}
+  for (const event of enrollment.events) {
+    arrivedAtByLessonId[event.toLessonId] = event.createdAt
+  }
+
+  const steps = lessons.map((lesson) => {
+    let state = 'upcoming'
+    if (lesson.sortOrder < currentOrder) state = 'completed'
+    else if (lesson.sortOrder === currentOrder) state = 'current'
+
+    const nextLesson = lessons.find((row) => row.sortOrder === lesson.sortOrder + 1)
+    const completedAt =
+      state === 'completed' && nextLesson
+        ? arrivedAtByLessonId[nextLesson.id] || null
+        : null
+
+    return {
+      id: lesson.id,
+      number: lesson.sortOrder,
+      title: lesson.title,
+      description: lesson.description || '',
+      state,
+      arrivedAt: arrivedAtByLessonId[lesson.id] || null,
+      completedAt,
+    }
+  })
+
+  const completedCount = steps.filter((step) => step.state === 'completed').length
+  const total = lessons.length
+
+  return {
+    enrolled: true,
+    isNewBeliever: Boolean(member.isNewBeliever),
+    enrollment: {
+      id: enrollment.id,
+      status: enrollment.status,
+      enrolledAt: enrollment.enrolledAt,
+      teacherId: enrollment.teacherId,
+      teacherName: memberName(enrollment.teacher),
+      currentLesson: {
+        id: enrollment.currentLesson.id,
+        number: enrollment.currentLesson.sortOrder,
+        title: enrollment.currentLesson.title,
+      },
+    },
+    steps,
+    progress: {
+      completed: completedCount,
+      total,
+      percent: total ? Math.round((completedCount / total) * 100) : 0,
+    },
+  }
+}
+
 async function createLesson(body) {
   const title = body.title.trim()
-  let sortOrder = body.sortOrder
-  if (sortOrder == null) {
-    const max = await repo.maxLessonSortOrder()
-    sortOrder = (max._max.sortOrder || 0) + 1
-  } else {
-    const existing = await repo.findLessonBySortOrder(sortOrder)
-    if (existing) {
-      throw AppError.conflict(`Lesson number ${sortOrder} already exists`)
-    }
+  const sortOrder = body.sortOrder
+  const existing = await repo.findLessonBySortOrder(sortOrder)
+  if (existing) {
+    throw AppError.conflict(`Lesson number ${sortOrder} already exists`)
   }
 
   return repo.createLesson({
     sortOrder,
     title,
-    description: body.description,
+    description: body.description.trim(),
   })
 }
 
@@ -325,6 +394,7 @@ async function updateEnrollment(id, body) {
 module.exports = {
   getOverview,
   searchAssignableStudents,
+  getMemberJourney,
   createLesson,
   updateLesson,
   createEnrollment,

@@ -6,6 +6,7 @@ const { ROLES } = require('../../config/constants')
 const {
   overviewSchema,
   assignableStudentsSchema,
+  memberJourneySchema,
   createLessonSchema,
   updateLessonSchema,
   createEnrollmentSchema,
@@ -23,6 +24,11 @@ router.get(
   authorize(ROLES.ADMIN),
   validate(assignableStudentsSchema),
   controller.searchAssignableStudents,
+)
+router.get(
+  '/journey/:memberId',
+  validate(memberJourneySchema),
+  controller.getMemberJourney,
 )
 router.get('/lessons', controller.listLessons)
 router.post(

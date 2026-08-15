@@ -11,6 +11,11 @@ const searchAssignableStudents = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, data, 'Assignable students retrieved')
 })
 
+const getMemberJourney = asyncHandler(async (req, res) => {
+  const data = await newBelieversService.getMemberJourney(req.params.memberId)
+  return ApiResponse.success(res, data, 'Member journey retrieved')
+})
+
 const listLessons = asyncHandler(async (req, res) => {
   const data = await newBelieversService.listActiveLessons()
   return ApiResponse.success(res, data, 'Lessons retrieved')
@@ -51,6 +56,7 @@ const updateEnrollment = asyncHandler(async (req, res) => {
 module.exports = {
   getOverview,
   searchAssignableStudents,
+  getMemberJourney,
   listLessons,
   createLesson,
   updateLesson,
