@@ -61,6 +61,17 @@ const idParamSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 })
 
+const downloadUrlSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  query: z.object({
+    // 'true' forces Content-Disposition: attachment (an actual download).
+    // Omitted/anything else means inline — required for grid thumbnails,
+    // click-to-preview, and viewer embeds, which silently download instead
+    // of rendering if this is ever set for them.
+    download: z.enum(['true', 'false']).optional(),
+  }),
+})
+
 const moveFileSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({ folderId: z.string().uuid().nullable() }),
@@ -74,5 +85,6 @@ module.exports = {
   renameFolderSchema,
   renameFileSchema,
   idParamSchema,
+  downloadUrlSchema,
   moveFileSchema,
 }

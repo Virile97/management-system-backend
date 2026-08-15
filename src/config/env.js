@@ -17,8 +17,10 @@ const envSchema = z.object({
 
   // File Storage upload ceiling (MB) and the cosmetic quota shown in the
   // storage-usage widget (not enforced server-side — real Supabase plan
-  // limits aren't queryable via the client API).
-  FILE_STORAGE_MAX_UPLOAD_MB: z.coerce.number().default(500),
+  // limits aren't queryable via the client API). Default of 50 matches the
+  // Supabase Free tier's per-file cap — raise this only if your project is
+  // on a plan with a higher limit (check Dashboard > Settings > Storage).
+  FILE_STORAGE_MAX_UPLOAD_MB: z.coerce.number().default(50),
   FILE_STORAGE_QUOTA_GB: z.coerce.number().default(5),
 
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),

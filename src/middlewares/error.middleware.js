@@ -15,10 +15,7 @@ function errorHandler(err, req, res, _next) {
 
   logger.error({ err }, 'Unhandled error')
 
-  const message =
-    env.NODE_ENV === 'production' || env.NODE_ENV === 'staging'
-      ? 'Something went wrong'
-      : err.message
+  const message = env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
   return ApiResponse.error(res, message, 500, ErrorCodes.INTERNAL_ERROR)
 }
 

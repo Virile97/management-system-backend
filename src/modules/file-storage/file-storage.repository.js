@@ -20,11 +20,15 @@ const folderSelect = {
  * - No folderId but type/search/tag IS set -> library-wide, unscoped by
  *   folder. Sidebar type filters and search intentionally search
  *   everywhere, not just the current level.
+ *
+ * All active-view queries also exclude archived rows (deletedAt IS NULL) —
+ * see the *Archived variants below for the archive listing itself.
  */
 function buildFileWhere({ folderId, type, search, tag }) {
   const isLibraryWideQuery = Boolean(type || search || tag)
 
   return {
+    deletedAt: null,
     ...(folderId !== undefined
       ? { folderId: folderId || null }
       : isLibraryWideQuery
@@ -62,6 +66,7 @@ function countFiles({ folderId, type, search, tag }) {
 async function countByType() {
   const rows = await prisma.storageFile.groupBy({
     by: ['fileType'],
+    where: { deletedAt: null },
     _count: true,
   })
   return rows.reduce((acc, row) => {
@@ -71,11 +76,12 @@ async function countByType() {
 }
 
 function countAllFiles() {
-  return prisma.storageFile.count()
+  return prisma.storageFile.count({ where: { deletedAt: null } })
 }
 
 async function sumSizeBytes() {
   const result = await prisma.storageFile.aggregate({
+    where: { deletedAt: null },
     _sum: { sizeBytes: true },
   })
   return result._sum.sizeBytes || 0n
@@ -112,6 +118,8 @@ function updateFile(id, data) {
   })
 }
 
+/** Real, irreversible row removal — only ever called on an already-archived
+ * row, after its Supabase object has been removed. */
 function deleteFile(id) {
   return prisma.storageFile.delete({ where: { id } })
 }
@@ -122,7 +130,7 @@ function findFolderById(id) {
 
 function listFolders({ parentId } = {}) {
   return prisma.folder.findMany({
-    where: { parentId: parentId ?? null },
+    where: { parentId: parentId ?? null, deletedAt: null },
     orderBy: { name: 'asc' },
   })
 }
@@ -132,6 +140,7 @@ function findFolderByName({ parentId, name }) {
     where: {
       parentId: parentId ?? null,
       name: { equals: name, mode: 'insensitive' },
+      deletedAt: null,
     },
   })
 }
@@ -144,11 +153,24 @@ function updateFolder(id, data) {
   return prisma.folder.update({ where: { id }, data })
 }
 
+/** Real, irreversible row removal — only ever called on an already-archived
+ * folder, once it has no remaining children. */
 function deleteFolder(id) {
   return prisma.folder.delete({ where: { id } })
 }
 
 async function countFolderChildren(id) {
+  const [subfolders, files] = await Promise.all([
+    prisma.folder.count({ where: { parentId: id, deletedAt: null } }),
+    prisma.storageFile.count({ where: { folderId: id, deletedAt: null } }),
+  ])
+  return subfolders + files
+}
+
+/** Same as countFolderChildren but ignores archive status — used before a
+ * permanent delete, since a folder still holding archived children can't
+ * be purged without orphaning them. */
+async function countAllFolderChildren(id) {
   const [subfolders, files] = await Promise.all([
     prisma.folder.count({ where: { parentId: id } }),
     prisma.storageFile.count({ where: { folderId: id } }),
@@ -173,6 +195,118 @@ async function listFolderBreadcrumb(folderId) {
   return chain
 }
 
+/** All descendant folder ids under `id`, not including `id` itself.
+ * Walked level-by-level rather than a single recursive query since this
+ * schema has no native recursive-CTE helper wired up elsewhere. */
+async function listDescendantFolderIds(id) {
+  const ids = []
+  let frontier = [id]
+
+  while (frontier.length > 0) {
+    const children = await prisma.folder.findMany({
+      where: { parentId: { in: frontier } },
+      select: { id: true },
+    })
+    frontier = children.map((c) => c.id)
+    ids.push(...frontier)
+  }
+
+  return ids
+}
+
+/** Soft-deletes a folder and every file/subfolder inside it (recursively),
+ * all stamped with the same deletedAt so they archive/restore as one unit. */
+async function archiveFolderTree(id, deletedAt) {
+  const descendantFolderIds = await listDescendantFolderIds(id)
+  const allFolderIds = [id, ...descendantFolderIds]
+
+  await prisma.$transaction([
+    prisma.folder.updateMany({
+      where: { id: { in: allFolderIds } },
+      data: { deletedAt },
+    }),
+    prisma.storageFile.updateMany({
+      where: { folderId: { in: allFolderIds } },
+      data: { deletedAt },
+    }),
+  ])
+}
+
+/** Restores a folder and everything archived alongside it in the same
+ * archiveFolderTree call (matched by identical deletedAt timestamp), plus
+ * walks up and restores any archived ancestors so the tree isn't left with
+ * a restored item nested under a still-archived (invisible) parent. */
+async function restoreFolderTree(id) {
+  const folder = await prisma.folder.findUnique({ where: { id } })
+  if (!folder || !folder.deletedAt) return
+
+  const descendantFolderIds = await listDescendantFolderIds(id)
+  const allFolderIds = [id, ...descendantFolderIds]
+
+  await prisma.$transaction([
+    prisma.folder.updateMany({
+      where: { id: { in: allFolderIds }, deletedAt: folder.deletedAt },
+      data: { deletedAt: null },
+    }),
+    prisma.storageFile.updateMany({
+      where: { folderId: { in: allFolderIds }, deletedAt: folder.deletedAt },
+      data: { deletedAt: null },
+    }),
+  ])
+
+  await restoreAncestors(folder.parentId)
+}
+
+async function restoreAncestors(parentId) {
+  let currentId = parentId
+  while (currentId) {
+    const parent = await prisma.folder.findUnique({ where: { id: currentId } })
+    if (!parent) return
+    if (parent.deletedAt) {
+      await prisma.folder.update({ where: { id: parent.id }, data: { deletedAt: null } })
+    }
+    currentId = parent.parentId
+  }
+}
+
+function archiveFile(id, deletedAt) {
+  return prisma.storageFile.update({ where: { id }, data: { deletedAt } })
+}
+
+async function restoreFile(id) {
+  const file = await prisma.storageFile.findUnique({ where: { id } })
+  if (!file) return null
+
+  const updated = await prisma.storageFile.update({
+    where: { id },
+    data: { deletedAt: null },
+  })
+
+  if (file.folderId) await restoreAncestors(file.folderId)
+  return updated
+}
+
+/** Flat list of every archived file and folder, most-recently-archived
+ * first. Each row carries enough context (original folder name) to show
+ * where it came from without needing full archive-side folder navigation. */
+async function listArchived() {
+  const [files, folders] = await Promise.all([
+    prisma.storageFile.findMany({
+      where: { deletedAt: { not: null } },
+      include: {
+        uploadedByUser: { select: uploaderSelect },
+        folder: { select: folderSelect },
+      },
+      orderBy: { deletedAt: 'desc' },
+    }),
+    prisma.folder.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
+    }),
+  ])
+  return { files, folders }
+}
+
 module.exports = {
   listFiles,
   countFiles,
@@ -183,12 +317,18 @@ module.exports = {
   createFile,
   updateFile,
   deleteFile,
+  archiveFile,
+  restoreFile,
   findFolderById,
   listFolders,
   findFolderByName,
   createFolder,
   updateFolder,
   deleteFolder,
+  archiveFolderTree,
+  restoreFolderTree,
   countFolderChildren,
+  countAllFolderChildren,
   listFolderBreadcrumb,
+  listArchived,
 }

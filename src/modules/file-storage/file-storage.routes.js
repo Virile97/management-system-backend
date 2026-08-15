@@ -12,6 +12,7 @@ const {
   renameFolderSchema,
   renameFileSchema,
   idParamSchema,
+  downloadUrlSchema,
   moveFileSchema,
 } = require('./file-storage.validation')
 
@@ -20,6 +21,7 @@ const router = Router()
 router.use(authenticate)
 
 router.get('/stats', controller.getStats)
+router.get('/archive', controller.listArchived)
 router.get('/folders', validate(listFoldersSchema), controller.listFolders)
 router.get(
   '/folders/:id/breadcrumb',
@@ -27,7 +29,7 @@ router.get(
   controller.getFolderBreadcrumb,
 )
 router.get('/', validate(listFilesSchema), controller.listFiles)
-router.get('/:id/download', validate(idParamSchema), controller.getDownloadUrl)
+router.get('/:id/download', validate(downloadUrlSchema), controller.getDownloadUrl)
 
 router.post(
   '/folders',
@@ -46,6 +48,18 @@ router.delete(
   authorize(ROLES.ADMIN),
   validate(idParamSchema),
   controller.deleteFolder,
+)
+router.post(
+  '/folders/:id/restore',
+  authorize(ROLES.ADMIN),
+  validate(idParamSchema),
+  controller.restoreFolder,
+)
+router.delete(
+  '/folders/:id/permanent',
+  authorize(ROLES.ADMIN),
+  validate(idParamSchema),
+  controller.permanentlyDeleteFolder,
 )
 
 router.post(
@@ -72,6 +86,18 @@ router.delete(
   authorize(ROLES.ADMIN),
   validate(idParamSchema),
   controller.deleteFile,
+)
+router.post(
+  '/:id/restore',
+  authorize(ROLES.ADMIN),
+  validate(idParamSchema),
+  controller.restoreFile,
+)
+router.delete(
+  '/:id/permanent',
+  authorize(ROLES.ADMIN),
+  validate(idParamSchema),
+  controller.permanentlyDeleteFile,
 )
 
 module.exports = router

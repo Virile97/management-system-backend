@@ -43,7 +43,10 @@ const deleteMember = asyncHandler(async (req, res) => {
 
 const bulkDeleteMembers = asyncHandler(async (req, res) => {
   const result = await memberService.deleteMembers(req.body.ids, req.user.id)
-  return ApiResponse.success(res, result, 'Members deleted successfully')
+  const message = result.blocked?.length
+    ? `Deleted ${result.deletedCount} member${result.deletedCount === 1 ? '' : 's'}; ${result.blocked.length} could not be deleted`
+    : 'Members deleted successfully'
+  return ApiResponse.success(res, result, message)
 })
 
 module.exports = {

@@ -434,11 +434,15 @@ model Folder {
   files         StorageFile[]
   createdByUser User?         @relation("FolderCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy     String?
+  /// Soft-delete marker — archived folders (and their descendants) are
+  /// hidden from normal browsing but recoverable until permanently deleted.
+  deletedAt     DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   @@index([parentId])
   @@index([parentId, name])
+  @@index([deletedAt])
   @@map("folders")
 }
 
@@ -462,6 +466,9 @@ model StorageFile {
   tags            String[]        @default([])
   uploadedByUser  User?           @relation("StorageFileUploadedBy", fields: [uploadedBy], references: [id], onDelete: SetNull)
   uploadedBy      String?
+  /// Soft-delete marker — archived files are hidden from normal browsing
+  /// but recoverable until permanently deleted.
+  deletedAt       DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -469,5 +476,6 @@ model StorageFile {
   @@index([fileType])
   @@index([createdAt])
   @@index([folderId, fileType])
+  @@index([deletedAt])
   @@map("storage_files")
 }

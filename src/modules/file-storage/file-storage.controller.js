@@ -20,7 +20,8 @@ const uploadFile = asyncHandler(async (req, res) => {
 })
 
 const getDownloadUrl = asyncHandler(async (req, res) => {
-  const data = await fileStorageService.getDownloadUrl(req.params.id)
+  const forceDownload = req.query.download === 'true'
+  const data = await fileStorageService.getDownloadUrl(req.params.id, { forceDownload })
   return ApiResponse.success(res, data, 'Download link generated')
 })
 
@@ -36,6 +37,16 @@ const moveFile = asyncHandler(async (req, res) => {
 
 const deleteFile = asyncHandler(async (req, res) => {
   await fileStorageService.deleteFile(req.params.id)
+  return ApiResponse.noContent(res)
+})
+
+const restoreFile = asyncHandler(async (req, res) => {
+  const data = await fileStorageService.restoreFile(req.params.id)
+  return ApiResponse.success(res, data, 'File restored')
+})
+
+const permanentlyDeleteFile = asyncHandler(async (req, res) => {
+  await fileStorageService.permanentlyDeleteFile(req.params.id)
   return ApiResponse.noContent(res)
 })
 
@@ -59,9 +70,24 @@ const deleteFolder = asyncHandler(async (req, res) => {
   return ApiResponse.noContent(res)
 })
 
+const restoreFolder = asyncHandler(async (req, res) => {
+  const data = await fileStorageService.restoreFolder(req.params.id)
+  return ApiResponse.success(res, data, 'Folder restored')
+})
+
+const permanentlyDeleteFolder = asyncHandler(async (req, res) => {
+  await fileStorageService.permanentlyDeleteFolder(req.params.id)
+  return ApiResponse.noContent(res)
+})
+
 const getFolderBreadcrumb = asyncHandler(async (req, res) => {
   const data = await fileStorageService.getFolderBreadcrumb(req.params.id)
   return ApiResponse.success(res, data, 'Breadcrumb retrieved')
+})
+
+const listArchived = asyncHandler(async (req, res) => {
+  const data = await fileStorageService.listArchived()
+  return ApiResponse.success(res, data, 'Archived items retrieved')
 })
 
 module.exports = {
@@ -72,9 +98,14 @@ module.exports = {
   renameFile,
   moveFile,
   deleteFile,
+  restoreFile,
+  permanentlyDeleteFile,
   listFolders,
   createFolder,
   renameFolder,
   deleteFolder,
+  restoreFolder,
+  permanentlyDeleteFolder,
   getFolderBreadcrumb,
+  listArchived,
 }

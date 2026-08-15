@@ -423,6 +423,50 @@ async function updateById(id, data, groupIds, levelId, lighthouseGroupId) {
   })
 }
 
+/** Counts records that block deletion via an `onDelete: Restrict` FK — soul-win
+ * credit and NBC teacher assignments are meaningful history/relationships
+ * that should never silently vanish, so deletion is blocked instead of
+ * cascaded for these. */
+async function countDeleteBlockers(memberId) {
+  const [soulWinCredits, nbcStudentsTaught] = await Promise.all([
+    prisma.soulWinWinner.count({ where: { memberId } }),
+    prisma.nbcEnrollment.count({ where: { teacherId: memberId } }),
+  ])
+  return { soulWinCredits, nbcStudentsTaught }
+}
+
+/** Same blocker check across a batch of members, grouped by memberId so the
+ * caller can report exactly which ones are blocked and why. */
+async function countDeleteBlockersByIds(memberIds) {
+  const [soulWinRows, nbcRows] = await Promise.all([
+    prisma.soulWinWinner.groupBy({
+      by: ['memberId'],
+      where: { memberId: { in: memberIds } },
+      _count: true,
+    }),
+    prisma.nbcEnrollment.groupBy({
+      by: ['teacherId'],
+      where: { teacherId: { in: memberIds } },
+      _count: true,
+    }),
+  ])
+
+  const blockers = new Map()
+  for (const row of soulWinRows) {
+    blockers.set(row.memberId, {
+      ...(blockers.get(row.memberId) || {}),
+      soulWinCredits: row._count,
+    })
+  }
+  for (const row of nbcRows) {
+    blockers.set(row.teacherId, {
+      ...(blockers.get(row.teacherId) || {}),
+      nbcStudentsTaught: row._count,
+    })
+  }
+  return blockers
+}
+
 function deleteById(id) {
   return prisma.member.delete({ where: { id } })
 }
@@ -467,6 +511,8 @@ module.exports = {
   findOfferingTypesByMemberId,
   create,
   updateById,
+  countDeleteBlockers,
+  countDeleteBlockersByIds,
   deleteById,
   findManyByIds,
   deleteManyByIds,

@@ -38,6 +38,7 @@ function toFileResponse(file) {
     uploadedByName: uploaderName(file.uploadedByUser),
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
+    deletedAt: file.deletedAt ?? null,
   }
 }
 
@@ -49,6 +50,7 @@ function toFolderResponse(folder) {
     createdBy: folder.createdBy,
     createdAt: folder.createdAt,
     updatedAt: folder.updatedAt,
+    deletedAt: folder.deletedAt ?? null,
   }
 }
 
@@ -85,12 +87,14 @@ async function getStats() {
   const quotaGB = env.FILE_STORAGE_QUOTA_GB
   const usedGB = usedBytes / (1024 * 1024 * 1024)
   const usedPercent = quotaGB > 0 ? Math.min(100, Math.round((usedGB / quotaGB) * 100)) : 0
+  const remainingGB = Math.max(0, quotaGB - usedGB)
 
   return {
     countsByType: countsByTypeRaw,
     totalFiles,
     usedBytes,
     usedGB: Math.round(usedGB * 10) / 10,
+    remainingGB: Math.round(remainingGB * 10) / 10,
     quotaGB,
     usedPercent,
   }
@@ -155,15 +159,26 @@ async function uploadFile({ file, folderId, tags }, user) {
   }
 }
 
-async function getDownloadUrl(id) {
+/**
+ * `forceDownload: true` sets Supabase's `download` option, which forces
+ * `Content-Disposition: attachment` on the response — the browser downloads
+ * the file instead of rendering it, no matter what element requests it
+ * (<img>, <embed>, <video>, a new-tab link). Grid thumbnails, click-to-
+ * preview, and viewer embeds must all use `forceDownload: false` (inline)
+ * or they silently download instead of displaying. Only an explicit "download
+ * this file" action should pass true.
+ */
+async function getDownloadUrl(id, { forceDownload = false } = {}) {
   const file = await repo.findFileById(id)
   if (!file) throw AppError.notFound('File not found')
 
   const { data, error } = await supabase.storage
     .from(file.bucket)
-    .createSignedUrl(file.storagePath, SIGNED_URL_EXPIRY_SECONDS, {
-      download: file.originalName,
-    })
+    .createSignedUrl(
+      file.storagePath,
+      SIGNED_URL_EXPIRY_SECONDS,
+      forceDownload ? { download: file.originalName } : {},
+    )
 
   if (error || !data?.signedUrl) {
     throw AppError.internal('Failed to generate download link')
@@ -203,9 +218,33 @@ async function moveFile(id, folderId) {
   return toFileResponse(updated)
 }
 
+/** Soft-delete — moves the file to Archive. The Supabase object is left
+ * alone until a subsequent permanentlyDeleteFile call. */
 async function deleteFile(id) {
   const file = await repo.findFileById(id)
   if (!file) throw AppError.notFound('File not found')
+  if (file.deletedAt) throw AppError.conflict('File is already archived')
+
+  await repo.archiveFile(id, new Date())
+}
+
+async function restoreFile(id) {
+  const file = await repo.findFileById(id)
+  if (!file) throw AppError.notFound('File not found')
+  if (!file.deletedAt) throw AppError.conflict('File is not archived')
+
+  const restored = await repo.restoreFile(id)
+  return toFileResponse(restored)
+}
+
+/** Real, irreversible deletion — only allowed once a file is already
+ * archived, mirroring how the trash works in most file managers. */
+async function permanentlyDeleteFile(id) {
+  const file = await repo.findFileById(id)
+  if (!file) throw AppError.notFound('File not found')
+  if (!file.deletedAt) {
+    throw AppError.conflict('Archive the file before deleting it permanently')
+  }
 
   const { error } = await supabase.storage.from(file.bucket).remove([file.storagePath])
   if (error) {
@@ -257,13 +296,40 @@ async function renameFolder(id, name) {
   return toFolderResponse(updated)
 }
 
+/** Soft-delete — archives the folder along with every file/subfolder
+ * inside it (recursively), all as one unit. */
 async function deleteFolder(id) {
   const folder = await repo.findFolderById(id)
   if (!folder) throw AppError.notFound('Folder not found')
+  if (folder.deletedAt) throw AppError.conflict('Folder is already archived')
 
-  const childCount = await repo.countFolderChildren(id)
+  await repo.archiveFolderTree(id, new Date())
+}
+
+async function restoreFolder(id) {
+  const folder = await repo.findFolderById(id)
+  if (!folder) throw AppError.notFound('Folder not found')
+  if (!folder.deletedAt) throw AppError.conflict('Folder is not archived')
+
+  await repo.restoreFolderTree(id)
+  const restored = await repo.findFolderById(id)
+  return toFolderResponse(restored)
+}
+
+/** Real, irreversible deletion — only allowed once a folder is already
+ * archived and has no remaining children (its files/subfolders must be
+ * permanently deleted first, or the whole tree was archived together and
+ * should be purged file-by-file/folder-by-folder from Archive). */
+async function permanentlyDeleteFolder(id) {
+  const folder = await repo.findFolderById(id)
+  if (!folder) throw AppError.notFound('Folder not found')
+  if (!folder.deletedAt) {
+    throw AppError.conflict('Archive the folder before deleting it permanently')
+  }
+
+  const childCount = await repo.countAllFolderChildren(id)
   if (childCount > 0) {
-    throw AppError.conflict('Folder is not empty — move or delete its contents first')
+    throw AppError.conflict('Folder is not empty — delete its contents first')
   }
 
   await repo.deleteFolder(id)
@@ -275,6 +341,18 @@ async function getFolderBreadcrumb(id) {
   return repo.listFolderBreadcrumb(id)
 }
 
+/** Flat list of everything currently archived — files and folders together,
+ * most-recently-archived first. */
+async function listArchived() {
+  const { files, folders } = await repo.listArchived()
+  const items = [
+    ...folders.map((folder) => ({ ...toFolderResponse(folder), itemType: 'folder' })),
+    ...files.map((file) => ({ ...toFileResponse(file), itemType: 'file' })),
+  ]
+  items.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt))
+  return items
+}
+
 module.exports = {
   listFiles,
   getStats,
@@ -283,9 +361,14 @@ module.exports = {
   renameFile,
   moveFile,
   deleteFile,
+  restoreFile,
+  permanentlyDeleteFile,
   listFolders,
   createFolder,
   renameFolder,
   deleteFolder,
+  restoreFolder,
+  permanentlyDeleteFolder,
   getFolderBreadcrumb,
+  listArchived,
 }

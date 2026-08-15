@@ -204,10 +204,38 @@ async function updateMember(id, data, actorId) {
   return toMemberResponse(updated)
 }
 
+/** Builds a human-readable reason for why a member can't be deleted, or
+ * null if there's nothing blocking it. */
+function describeDeleteBlockers({ soulWinCredits, nbcStudentsTaught }) {
+  const reasons = []
+  if (soulWinCredits > 0) {
+    reasons.push(
+      `credited on ${soulWinCredits} soul-win record${soulWinCredits === 1 ? '' : 's'}`,
+    )
+  }
+
+  if (nbcStudentsTaught > 0) {
+    reasons.push(
+      `teaching ${nbcStudentsTaught} New Believers student${nbcStudentsTaught === 1 ? '' : 's'}`,
+    )
+  }
+
+  return reasons.length > 0 ? reasons.join(' and ') : null
+}
+
 async function deleteMember(id, actorId) {
   const existing = await memberRepository.findById(id)
   if (!existing) {
     throw AppError.notFound('Member not found')
+  }
+
+  const blockers = await memberRepository.countDeleteBlockers(id)
+  const reason = describeDeleteBlockers(blockers)
+  if (reason) {
+    throw AppError.conflict(
+      `Cannot delete ${existing.firstName} ${existing.lastName}: ${reason}. Reassign or resolve these first.`,
+      blockers,
+    )
   }
 
   await memberRepository.deleteById(id)
@@ -225,22 +253,45 @@ async function deleteMembers(ids, actorId) {
   const existing = await memberRepository.findManyByIds(uniqueIds)
 
   if (existing.length === 0) {
-    return { deletedCount: 0, deletedIds: [] }
+    return { deletedCount: 0, deletedIds: [], blocked: [] }
   }
 
-  const deletedIds = existing.map((m) => m.id)
+  const blockersByMemberId = await memberRepository.countDeleteBlockersByIds(
+    existing.map((m) => m.id),
+  )
+
+  const deletable = []
+  const blocked = []
+  for (const member of existing) {
+    const reason = describeDeleteBlockers(blockersByMemberId.get(member.id) || {})
+    if (reason) {
+      blocked.push({
+        id: member.id,
+        name: `${member.firstName} ${member.lastName}`,
+        reason,
+      })
+    } else {
+      deletable.push(member)
+    }
+  }
+
+  if (deletable.length === 0) {
+    return { deletedCount: 0, deletedIds: [], blocked }
+  }
+
+  const deletedIds = deletable.map((m) => m.id)
   await memberRepository.deleteManyByIds(deletedIds)
 
-  const names = existing.map((m) => `${m.firstName} ${m.lastName}`)
+  const names = deletable.map((m) => `${m.firstName} ${m.lastName}`)
   logMemberActivity({
     action: 'MEMBER_DELETED',
-    message: `Deleted ${existing.length} member${existing.length === 1 ? '' : 's'}`,
+    message: `Deleted ${deletable.length} member${deletable.length === 1 ? '' : 's'}`,
     detail: names.join(', '),
     metadata: { memberIds: deletedIds },
     actorId,
   })
 
-  return { deletedCount: existing.length, deletedIds }
+  return { deletedCount: deletable.length, deletedIds, blocked }
 }
 
 module.exports = {
