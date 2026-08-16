@@ -423,55 +423,23 @@ async function updateById(id, data, groupIds, levelId, lighthouseGroupId) {
   })
 }
 
-/** Counts records that block deletion via an `onDelete: Restrict` FK — soul-win
- * credit and NBC teacher assignments are meaningful history/relationships
- * that should never silently vanish, so deletion is blocked instead of
- * cascaded for these.
- *
- * Accepts an optional transactional client (`tx`) so the caller can re-check
- * blockers and perform the delete inside one `$transaction` — closing the
- * race where a blocking row is inserted between the check and the delete,
- * which would otherwise surface as a raw Postgres FK-violation error instead
- * of the clean AppError.conflict message. */
-async function countDeleteBlockers(memberId, client = prisma) {
-  const [soulWinCredits, nbcStudentsTaught] = await Promise.all([
-    client.soulWinWinner.count({ where: { memberId } }),
-    client.nbcEnrollment.count({ where: { teacherId: memberId } }),
-  ])
-  return { soulWinCredits, nbcStudentsTaught }
+/** soul_win_winners.memberId and nbc_enrollments.teacherId are both
+ * `onDelete: Restrict` at the DB level — deleting a member who's credited on
+ * a soul-win record or teaching NBC students fails with a raw Postgres FK
+ * violation unless those dependent rows are removed first. Deleting a
+ * member cascades to these: their soul-win credit rows and (as teacher)
+ * their students' NBC enrollments are deleted too — the underlying SoulWin
+ * convert record and the student Member row are untouched (nbc_enrollments
+ * cascades the *student* side already via schema-level onDelete: Cascade;
+ * only the teacher side needs handling here). */
+async function cascadeDeleteDependents(memberId, client = prisma) {
+  await client.soulWinWinner.deleteMany({ where: { memberId } })
+  await client.nbcEnrollment.deleteMany({ where: { teacherId: memberId } })
 }
 
-/** Same blocker check across a batch of members, grouped by memberId so the
- * caller can report exactly which ones are blocked and why. Also accepts an
- * optional transactional client — see countDeleteBlockers. */
-async function countDeleteBlockersByIds(memberIds, client = prisma) {
-  const [soulWinRows, nbcRows] = await Promise.all([
-    client.soulWinWinner.groupBy({
-      by: ['memberId'],
-      where: { memberId: { in: memberIds } },
-      _count: true,
-    }),
-    client.nbcEnrollment.groupBy({
-      by: ['teacherId'],
-      where: { teacherId: { in: memberIds } },
-      _count: true,
-    }),
-  ])
-
-  const blockers = new Map()
-  for (const row of soulWinRows) {
-    blockers.set(row.memberId, {
-      ...(blockers.get(row.memberId) || {}),
-      soulWinCredits: row._count,
-    })
-  }
-  for (const row of nbcRows) {
-    blockers.set(row.teacherId, {
-      ...(blockers.get(row.teacherId) || {}),
-      nbcStudentsTaught: row._count,
-    })
-  }
-  return blockers
+async function cascadeDeleteDependentsByIds(memberIds, client = prisma) {
+  await client.soulWinWinner.deleteMany({ where: { memberId: { in: memberIds } } })
+  await client.nbcEnrollment.deleteMany({ where: { teacherId: { in: memberIds } } })
 }
 
 function deleteById(id, client = prisma) {
@@ -490,8 +458,8 @@ function deleteManyByIds(ids, client = prisma) {
 }
 
 /** Runs `fn` (an async callback receiving a transactional Prisma client)
- * inside a single transaction. Used to make "recheck blockers, then delete"
- * atomic — see countDeleteBlockers. */
+ * inside a single transaction. Used to make "cascade-delete dependents, then
+ * delete the member" atomic — see cascadeDeleteDependents. */
 function runInTransaction(fn) {
   return prisma.$transaction(fn)
 }
@@ -525,8 +493,8 @@ module.exports = {
   findOfferingTypesByMemberId,
   create,
   updateById,
-  countDeleteBlockers,
-  countDeleteBlockersByIds,
+  cascadeDeleteDependents,
+  cascadeDeleteDependentsByIds,
   runInTransaction,
   deleteById,
   findManyByIds,

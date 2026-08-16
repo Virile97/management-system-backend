@@ -204,45 +204,18 @@ async function updateMember(id, data, actorId) {
   return toMemberResponse(updated)
 }
 
-/** Builds a human-readable reason for why a member can't be deleted, or
- * null if there's nothing blocking it. */
-function describeDeleteBlockers({ soulWinCredits, nbcStudentsTaught }) {
-  const reasons = []
-  if (soulWinCredits > 0) {
-    reasons.push(
-      `credited on ${soulWinCredits} soul-win record${soulWinCredits === 1 ? '' : 's'}`,
-    )
-  }
-
-  if (nbcStudentsTaught > 0) {
-    reasons.push(
-      `teaching ${nbcStudentsTaught} New Believers student${nbcStudentsTaught === 1 ? '' : 's'}`,
-    )
-  }
-
-  return reasons.length > 0 ? reasons.join(' and ') : null
-}
-
 async function deleteMember(id, actorId) {
   const existing = await memberRepository.findById(id)
   if (!existing) {
     throw AppError.notFound('Member not found')
   }
 
-  // Blocker recheck + delete run inside one transaction so a blocking row
-  // (soul-win credit, NBC teacher assignment) inserted between the check and
-  // the delete can't slip through — the delete would otherwise fail with a
-  // raw Postgres FK-violation error instead of this clean conflict message.
+  // Cascading (soul-win credits, NBC teacher assignments) + the member
+  // delete run inside one transaction so a dependent row inserted between
+  // the cascade and the delete can't cause a raw Postgres FK-violation
+  // error — either everything commits together or nothing does.
   await memberRepository.runInTransaction(async (tx) => {
-    const blockers = await memberRepository.countDeleteBlockers(id, tx)
-    const reason = describeDeleteBlockers(blockers)
-    if (reason) {
-      throw AppError.conflict(
-        `Cannot delete ${existing.firstName} ${existing.lastName}: ${reason}. Reassign or resolve these first.`,
-        blockers,
-      )
-    }
-
+    await memberRepository.cascadeDeleteDependents(id, tx)
     await memberRepository.deleteById(id, tx)
   })
 
@@ -262,54 +235,25 @@ async function deleteMembers(ids, actorId) {
     return { deletedCount: 0, deletedIds: [], blocked: [] }
   }
 
-  // Blocker recheck + delete run inside one transaction — see deleteMember
-  // for why (closes the check-then-delete race window).
-  const { deletable, blocked } = await memberRepository.runInTransaction(async (tx) => {
-    const blockersByMemberId = await memberRepository.countDeleteBlockersByIds(
-      existing.map((m) => m.id),
-      tx,
-    )
+  const existingIds = existing.map((m) => m.id)
 
-    const deletableMembers = []
-    const blockedMembers = []
-    for (const member of existing) {
-      const reason = describeDeleteBlockers(blockersByMemberId.get(member.id) || {})
-      if (reason) {
-        blockedMembers.push({
-          id: member.id,
-          name: `${member.firstName} ${member.lastName}`,
-          reason,
-        })
-      } else {
-        deletableMembers.push(member)
-      }
-    }
-
-    if (deletableMembers.length > 0) {
-      await memberRepository.deleteManyByIds(
-        deletableMembers.map((m) => m.id),
-        tx,
-      )
-    }
-
-    return { deletable: deletableMembers, blocked: blockedMembers }
+  // Cascading + the batch delete run inside one transaction — see
+  // deleteMember for why (closes the same race window).
+  await memberRepository.runInTransaction(async (tx) => {
+    await memberRepository.cascadeDeleteDependentsByIds(existingIds, tx)
+    await memberRepository.deleteManyByIds(existingIds, tx)
   })
 
-  if (deletable.length === 0) {
-    return { deletedCount: 0, deletedIds: [], blocked }
-  }
-
-  const deletedIds = deletable.map((m) => m.id)
-  const names = deletable.map((m) => `${m.firstName} ${m.lastName}`)
+  const names = existing.map((m) => `${m.firstName} ${m.lastName}`)
   logMemberActivity({
     action: 'MEMBER_DELETED',
-    message: `Deleted ${deletable.length} member${deletable.length === 1 ? '' : 's'}`,
+    message: `Deleted ${existing.length} member${existing.length === 1 ? '' : 's'}`,
     detail: names.join(', '),
-    metadata: { memberIds: deletedIds },
+    metadata: { memberIds: existingIds },
     actorId,
   })
 
-  return { deletedCount: deletable.length, deletedIds, blocked }
+  return { deletedCount: existing.length, deletedIds: existingIds, blocked: [] }
 }
 
 module.exports = {
