@@ -30,6 +30,7 @@ router.get(
 )
 router.get('/', validate(listFilesSchema), controller.listFiles)
 router.get('/:id/download', validate(downloadUrlSchema), controller.getDownloadUrl)
+router.get('/:id/thumbnail', validate(idParamSchema), controller.getThumbnailUrl)
 
 router.post(
   '/folders',

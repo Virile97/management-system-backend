@@ -5,6 +5,7 @@ const env = require('../../config/env')
 const { AppError } = require('../../shared/errors')
 const { getPagination, buildMeta } = require('../../shared/utils')
 const { resolveFileType, SIGNED_URL_EXPIRY_SECONDS } = require('./file-storage.constants')
+const { queueThumbnailGeneration } = require('./file-storage.thumbnail')
 
 const bucket = env.SUPABASE_STORAGE_BUCKET
 
@@ -33,6 +34,7 @@ function toFileResponse(file) {
     mimeType: file.mimeType,
     sizeBytes: Number(file.sizeBytes),
     fileType: file.fileType,
+    thumbnailStatus: file.thumbnailStatus,
     tags: file.tags,
     uploadedBy: file.uploadedBy,
     uploadedByName: uploaderName(file.uploadedByUser),
@@ -149,6 +151,12 @@ async function uploadFile({ file, folderId, tags }, user) {
       tags: tagList,
       uploadedBy: user?.id || null,
     })
+
+    // Fire-and-forget — the upload response doesn't wait on thumbnail
+    // generation (PDF/video rendering can take seconds). Errors are caught
+    // and recorded as FAILED inside queueThumbnailGeneration itself.
+    queueThumbnailGeneration(created)
+
     return toFileResponse(created)
   } catch {
     // Best-effort cleanup — Supabase upload already succeeded but the DB
@@ -182,6 +190,31 @@ async function getDownloadUrl(id, { forceDownload = false } = {}) {
 
   if (error || !data?.signedUrl) {
     throw AppError.internal('Failed to generate download link')
+  }
+
+  return {
+    url: data.signedUrl,
+    expiresIn: SIGNED_URL_EXPIRY_SECONDS,
+    expiresAt: new Date(Date.now() + SIGNED_URL_EXPIRY_SECONDS * 1000).toISOString(),
+  }
+}
+
+/** Mirrors getDownloadUrl but for the generated grid-view thumbnail instead
+ * of the original file. Thumbnails live in the same (private) bucket, so
+ * they need the same on-demand signing — never a plain public URL. */
+async function getThumbnailUrl(id) {
+  const file = await repo.findFileById(id)
+  if (!file) throw AppError.notFound('File not found')
+  if (file.thumbnailStatus !== 'READY' || !file.thumbnailPath) {
+    throw AppError.conflict('Thumbnail is not ready')
+  }
+
+  const { data, error } = await supabase.storage
+    .from(file.bucket)
+    .createSignedUrl(file.thumbnailPath, SIGNED_URL_EXPIRY_SECONDS)
+
+  if (error || !data?.signedUrl) {
+    throw AppError.internal('Failed to generate thumbnail link')
   }
 
   return {
@@ -246,11 +279,12 @@ async function permanentlyDeleteFile(id) {
     throw AppError.conflict('Archive the file before deleting it permanently')
   }
 
-  const { error } = await supabase.storage.from(file.bucket).remove([file.storagePath])
+  const objectsToRemove = [file.storagePath, ...(file.thumbnailPath ? [file.thumbnailPath] : [])]
+  const { error } = await supabase.storage.from(file.bucket).remove(objectsToRemove)
   if (error) {
     // A leftover Storage blob is a lesser problem than a DB row the UI can
     // no longer resolve — proceed with the DB delete regardless.
-    console.warn(`Failed to remove storage object ${file.storagePath}:`, error.message)
+    console.warn(`Failed to remove storage object(s) for file ${id}:`, error.message)
   }
 
   await repo.deleteFile(id)
@@ -358,6 +392,7 @@ module.exports = {
   getStats,
   uploadFile,
   getDownloadUrl,
+  getThumbnailUrl,
   renameFile,
   moveFile,
   deleteFile,

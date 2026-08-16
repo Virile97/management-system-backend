@@ -423,6 +423,17 @@ enum StorageFileType {
   OTHER
 }
 
+/// Grid-view thumbnail generation state for a StorageFile.
+/// NONE = this fileType never gets a generated thumbnail (e.g. AUDIO/OTHER).
+/// PENDING = generation queued/running; READY = thumbnailPath is usable;
+/// FAILED = generation was attempted and errored (won't auto-retry).
+enum ThumbnailStatus {
+  NONE
+  PENDING
+  READY
+  FAILED
+}
+
 /// Real nested folder hierarchy for the shared org-wide file library.
 /// Self-referencing via parentId (null = root level).
 model Folder {
@@ -466,6 +477,9 @@ model StorageFile {
   tags            String[]        @default([])
   uploadedByUser  User?           @relation("StorageFileUploadedBy", fields: [uploadedBy], references: [id], onDelete: SetNull)
   uploadedBy      String?
+  /// Same bucket as the original; null until thumbnailStatus is READY.
+  thumbnailPath   String?
+  thumbnailStatus ThumbnailStatus @default(NONE)
   /// Soft-delete marker — archived files are hidden from normal browsing
   /// but recoverable until permanently deleted.
   deletedAt       DateTime?

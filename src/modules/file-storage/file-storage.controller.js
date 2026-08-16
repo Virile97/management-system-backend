@@ -25,6 +25,11 @@ const getDownloadUrl = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, data, 'Download link generated')
 })
 
+const getThumbnailUrl = asyncHandler(async (req, res) => {
+  const data = await fileStorageService.getThumbnailUrl(req.params.id)
+  return ApiResponse.success(res, data, 'Thumbnail link generated')
+})
+
 const renameFile = asyncHandler(async (req, res) => {
   const data = await fileStorageService.renameFile(req.params.id, req.body)
   return ApiResponse.success(res, data, 'File updated')
@@ -95,6 +100,7 @@ module.exports = {
   getStats,
   uploadFile,
   getDownloadUrl,
+  getThumbnailUrl,
   renameFile,
   moveFile,
   deleteFile,
