@@ -457,7 +457,7 @@ model Folder {
   @@map("folders")
 }
 
-/// Shared org-wide file library (Supabase Storage). Visibility is not
+/// Shared org-wide file library (Cloudflare R2). Visibility is not
 /// owner-restricted — any authenticated user can list/download; only ADMIN
 /// can upload/rename/delete/move. uploadedBy is kept for audit only.
 /// All access to bytes goes through short-lived signed URLs (see

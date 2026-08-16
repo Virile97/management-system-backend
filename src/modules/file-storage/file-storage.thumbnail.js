@@ -6,7 +6,7 @@ const sharp = require('sharp')
 const ffmpeg = require('fluent-ffmpeg')
 const ffmpegPath = require('ffmpeg-static')
 const logger = require('../../config/logger')
-const supabase = require('../../config/supabase')
+const r2Storage = require('./file-storage.r2')
 const repo = require('./file-storage.repository')
 const { FILE_TYPES } = require('./file-storage.constants')
 
@@ -104,25 +104,12 @@ async function queueThumbnailGeneration(file) {
   try {
     await repo.updateFile(file.id, { thumbnailStatus: 'PENDING' })
 
-    const { data: original, error: downloadError } = await supabase.storage
-      .from(file.bucket)
-      .download(file.storagePath)
-    if (downloadError || !original) {
-      throw new Error(downloadError?.message || 'Failed to download original for thumbnailing')
-    }
-
-    const originalBuffer = Buffer.from(await original.arrayBuffer())
+    const originalBuffer = await r2Storage.downloadObject(file.bucket, file.storagePath)
     const thumbnailBuffer = await generateThumbnailBuffer(file.fileType, originalBuffer)
     if (!thumbnailBuffer) throw new Error('No thumbnail generator for this file type')
 
     const thumbnailPath = `${file.storagePath}-thumb-${crypto.randomUUID()}.webp`
-    const { error: uploadError } = await supabase.storage
-      .from(file.bucket)
-      .upload(thumbnailPath, thumbnailBuffer, {
-        contentType: THUMBNAIL_CONTENT_TYPE,
-        upsert: false,
-      })
-    if (uploadError) throw new Error(uploadError.message || 'Failed to upload thumbnail')
+    await r2Storage.uploadObject(file.bucket, thumbnailPath, thumbnailBuffer, THUMBNAIL_CONTENT_TYPE)
 
     await repo.updateFile(file.id, { thumbnailPath, thumbnailStatus: 'READY' })
   } catch (err) {

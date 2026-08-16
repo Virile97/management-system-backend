@@ -10,18 +10,26 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
-  SUPABASE_URL: z.string().min(1, 'SUPABASE_URL is required'),
-  SUPABASE_ANON_KEY: z.string().optional().default(''),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
-  SUPABASE_STORAGE_BUCKET: z.string().default('church-files'),
+  // Cloudflare R2 (S3-compatible object storage) — used for File Storage.
+  // Optional at the env-schema level (many modules never touch Storage) so
+  // the app can still boot without them configured; only throws once a
+  // caller actually tries to use R2 — see src/config/r2.js.
+  // R2_ACCOUNT_ID builds the endpoint: https://<id>.r2.cloudflarestorage.com
+  R2_ACCOUNT_ID: z.string().optional().default(''),
+  R2_ACCESS_KEY_ID: z.string().optional().default(''),
+  R2_SECRET_ACCESS_KEY: z.string().optional().default(''),
+  R2_BUCKET: z.string().default('church-files'),
 
-  // File Storage upload ceiling (MB) and the cosmetic quota shown in the
-  // storage-usage widget (not enforced server-side — real Supabase plan
-  // limits aren't queryable via the client API). Default of 50 matches the
-  // Supabase Free tier's per-file cap — raise this only if your project is
-  // on a plan with a higher limit (check Dashboard > Settings > Storage).
+  // File Storage upload ceiling (MB) — not enforced by R2 itself (no
+  // per-file size cap to query via the API), just a client-facing limit.
   FILE_STORAGE_MAX_UPLOAD_MB: z.coerce.number().default(50),
-  FILE_STORAGE_QUOTA_GB: z.coerce.number().default(5),
+  // Cosmetic quota shown in the storage-usage widget — computed from this
+  // app's own DB (SUM of file sizeBytes), NOT read from Cloudflare. Default
+  // of 10 matches R2's free-tier storage allowance (10 GB-months/month);
+  // raise it once you're on paid usage, since R2 has no hard storage cap to
+  // enforce against. If R2 objects are ever created/deleted outside this
+  // app, this number can drift from what Cloudflare actually bills you for.
+  FILE_STORAGE_QUOTA_GB: z.coerce.number().default(10),
 
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   JWT_EXPIRES_IN: z.string().default('15m'),

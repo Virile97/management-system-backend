@@ -1,7 +1,7 @@
 {
   "name": "management-system-backend",
   "version": "1.0.0",
-  "description": "Express + Prisma + Supabase backend",
+  "description": "Express + Prisma + Cloudflare R2 backend",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
@@ -19,7 +19,7 @@
     "jobs:sync-member-status": "node scripts/jobs/sync-member-status.js",
     "jobs:install-member-status-cron": "bash scripts/cron/install-member-status.sh",
     "jobs:remove-member-status-cron": "bash scripts/cron/install-member-status.sh --remove",
-    "storage:init-bucket": "node scripts/init-storage-bucket.js",
+    "storage:migrate-to-r2": "node scripts/migrate-storage-to-r2.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
@@ -29,6 +29,8 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1111.0",
+    "@aws-sdk/s3-request-presigner": "^3.1111.0",
     "@prisma/client": "^5.20.0",
     "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",

@@ -1,19 +1,19 @@
 # Management System Backend
 
-Express + Prisma + Supabase (PostgreSQL) REST API.
+Express + Prisma (PostgreSQL, hosted on Supabase) + Cloudflare R2 REST API.
 
 ## Stack
 
 - Node.js / Express (plain JavaScript, CommonJS)
-- Prisma ORM
-- Supabase (Postgres + client SDK)
+- Prisma ORM (Postgres, hosted on Supabase)
+- Cloudflare R2 (S3-compatible object storage) for File Storage
 - Zod for request validation
 - JWT auth with bcrypt password hashing
 - Pino for logging
 
 ## Getting started
 
-1. Copy `.env.example` to `.env` and fill in your Supabase project values (`DATABASE_URL`, `SUPABASE_URL`, keys, `JWT_SECRET`).
+1. Copy `.env.example` to `.env` and fill in `DATABASE_URL`, your Cloudflare R2 project values (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`), and `JWT_SECRET`.
 2. Install dependencies:
    ```bash
    npm install
@@ -46,7 +46,7 @@ API is served under `API_PREFIX` (default `/api/v1`). Health check: `GET /api/v1
 ## Structure
 
 - `prisma/` — schema, migrations, seed script
-- `src/config/` — env, Prisma client, Supabase client, logger, constants
+- `src/config/` — env, Prisma client, R2 client, logger, constants
 - `src/modules/` — feature modules (`auth`, `users`, `posts`), each with controller/service/repository/routes/validation
 - `src/middlewares/` — auth, validation, error handling, rate limiting, request logging
 - `src/shared/` — errors, utils, validators, interfaces reused across modules

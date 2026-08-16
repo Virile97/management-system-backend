@@ -119,7 +119,7 @@ function updateFile(id, data) {
 }
 
 /** Real, irreversible row removal — only ever called on an already-archived
- * row, after its Supabase object has been removed. */
+ * row, after its R2 object has been removed. */
 function deleteFile(id) {
   return prisma.storageFile.delete({ where: { id } })
 }

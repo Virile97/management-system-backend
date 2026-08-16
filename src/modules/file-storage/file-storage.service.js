@@ -1,13 +1,13 @@
 const crypto = require('crypto')
 const repo = require('./file-storage.repository')
-const supabase = require('../../config/supabase')
+const r2Storage = require('./file-storage.r2')
 const env = require('../../config/env')
 const { AppError } = require('../../shared/errors')
 const { getPagination, buildMeta } = require('../../shared/utils')
 const { resolveFileType, SIGNED_URL_EXPIRY_SECONDS } = require('./file-storage.constants')
 const { queueThumbnailGeneration } = require('./file-storage.thumbnail')
 
-const bucket = env.SUPABASE_STORAGE_BUCKET
+const bucket = env.R2_BUCKET
 
 function sanitizeFilename(name) {
   return String(name || 'file')
@@ -78,6 +78,13 @@ async function listFiles(query = {}) {
   }
 }
 
+/** "Usage" here is SUM(sizeBytes) over active (non-deleted) rows in this
+ * app's own DB, not a live read from Cloudflare — R2's S3 API has no
+ * "bucket size" endpoint, only per-object metadata, so an accurate live
+ * total would mean listing every object. This number can drift from what
+ * Cloudflare actually bills if R2 objects are ever created/deleted outside
+ * this app (e.g. directly in the dashboard). For real billed usage, check
+ * the R2 dashboard or Cloudflare's GraphQL Analytics API directly. */
 async function getStats() {
   const [countsByTypeRaw, totalFiles, usedBytesRaw] = await Promise.all([
     repo.countByType(),
@@ -119,14 +126,9 @@ async function uploadFile({ file, folderId, tags }, user) {
   const sanitized = sanitizeFilename(file.originalname)
   const storagePath = `${folderId || 'root'}/${crypto.randomUUID()}-${sanitized}`
 
-  const { error: uploadError } = await supabase.storage
-    .from(bucket)
-    .upload(storagePath, file.buffer, {
-      contentType: file.mimetype,
-      upsert: false,
-    })
-
-  if (uploadError) {
+  try {
+    await r2Storage.uploadObject(bucket, storagePath, file.buffer, file.mimetype)
+  } catch {
     throw AppError.internal('Failed to upload file to storage')
   }
 
@@ -159,41 +161,37 @@ async function uploadFile({ file, folderId, tags }, user) {
 
     return toFileResponse(created)
   } catch {
-    // Best-effort cleanup — Supabase upload already succeeded but the DB
+    // Best-effort cleanup — the R2 upload already succeeded but the DB
     // insert failed. No true two-phase-commit against an external object
     // store, so this is an accepted eventual-consistency compromise.
-    await supabase.storage.from(bucket).remove([storagePath]).catch(() => {})
+    await r2Storage.removeObjects(bucket, [storagePath]).catch(() => {})
     throw AppError.internal('File uploaded but failed to save metadata — please retry')
   }
 }
 
 /**
- * `forceDownload: true` sets Supabase's `download` option, which forces
- * `Content-Disposition: attachment` on the response — the browser downloads
- * the file instead of rendering it, no matter what element requests it
- * (<img>, <embed>, <video>, a new-tab link). Grid thumbnails, click-to-
- * preview, and viewer embeds must all use `forceDownload: false` (inline)
- * or they silently download instead of displaying. Only an explicit "download
- * this file" action should pass true.
+ * `forceDownload: true` sets Content-Disposition: attachment on the signed
+ * URL — the browser downloads the file instead of rendering it, no matter
+ * what element requests it (<img>, <embed>, <video>, a new-tab link). Grid
+ * thumbnails, click-to-preview, and viewer embeds must all use
+ * `forceDownload: false` (inline) or they silently download instead of
+ * displaying. Only an explicit "download this file" action should pass true.
  */
 async function getDownloadUrl(id, { forceDownload = false } = {}) {
   const file = await repo.findFileById(id)
   if (!file) throw AppError.notFound('File not found')
 
-  const { data, error } = await supabase.storage
-    .from(file.bucket)
-    .createSignedUrl(
-      file.storagePath,
-      SIGNED_URL_EXPIRY_SECONDS,
-      forceDownload ? { download: file.originalName } : {},
-    )
-
-  if (error || !data?.signedUrl) {
+  let url
+  try {
+    url = await r2Storage.getSignedObjectUrl(file.bucket, file.storagePath, {
+      downloadFilename: forceDownload ? file.originalName : undefined,
+    })
+  } catch {
     throw AppError.internal('Failed to generate download link')
   }
 
   return {
-    url: data.signedUrl,
+    url,
     expiresIn: SIGNED_URL_EXPIRY_SECONDS,
     expiresAt: new Date(Date.now() + SIGNED_URL_EXPIRY_SECONDS * 1000).toISOString(),
   }
@@ -209,16 +207,15 @@ async function getThumbnailUrl(id) {
     throw AppError.conflict('Thumbnail is not ready')
   }
 
-  const { data, error } = await supabase.storage
-    .from(file.bucket)
-    .createSignedUrl(file.thumbnailPath, SIGNED_URL_EXPIRY_SECONDS)
-
-  if (error || !data?.signedUrl) {
+  let url
+  try {
+    url = await r2Storage.getSignedObjectUrl(file.bucket, file.thumbnailPath)
+  } catch {
     throw AppError.internal('Failed to generate thumbnail link')
   }
 
   return {
-    url: data.signedUrl,
+    url,
     expiresIn: SIGNED_URL_EXPIRY_SECONDS,
     expiresAt: new Date(Date.now() + SIGNED_URL_EXPIRY_SECONDS * 1000).toISOString(),
   }
@@ -244,14 +241,14 @@ async function moveFile(id, folderId) {
     if (!folder) throw AppError.notFound('Folder not found')
   }
 
-  // Only the DB folderId changes — the underlying Supabase object keeps its
+  // Only the DB folderId changes — the underlying R2 object keeps its
   // original storagePath. The DB is the sole source of truth for logical
   // folder membership; the storage key is an opaque, immutable identifier.
   const updated = await repo.updateFile(id, { folderId: folderId || null })
   return toFileResponse(updated)
 }
 
-/** Soft-delete — moves the file to Archive. The Supabase object is left
+/** Soft-delete — moves the file to Archive. The R2 object is left
  * alone until a subsequent permanentlyDeleteFile call. */
 async function deleteFile(id) {
   const file = await repo.findFileById(id)
@@ -280,11 +277,12 @@ async function permanentlyDeleteFile(id) {
   }
 
   const objectsToRemove = [file.storagePath, ...(file.thumbnailPath ? [file.thumbnailPath] : [])]
-  const { error } = await supabase.storage.from(file.bucket).remove(objectsToRemove)
-  if (error) {
+  try {
+    await r2Storage.removeObjects(file.bucket, objectsToRemove)
+  } catch (err) {
     // A leftover Storage blob is a lesser problem than a DB row the UI can
     // no longer resolve — proceed with the DB delete regardless.
-    console.warn(`Failed to remove storage object(s) for file ${id}:`, error.message)
+    console.warn(`Failed to remove storage object(s) for file ${id}:`, err.message)
   }
 
   await repo.deleteFile(id)
