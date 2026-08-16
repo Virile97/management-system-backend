@@ -232,16 +232,39 @@ async function archiveFolderTree(id, deletedAt) {
   ])
 }
 
+/** Collects the ids of every archived ancestor above `parentId`, walking up
+ * the chain until an active folder or the root is reached. Read-only — used
+ * to build a restore operation list that runs inside the caller's
+ * transaction, rather than issuing separate non-transactional updates. */
+async function collectArchivedAncestorIds(parentId) {
+  const ids = []
+  let currentId = parentId
+
+  while (currentId) {
+    const parent = await prisma.folder.findUnique({
+      where: { id: currentId },
+      select: { id: true, parentId: true, deletedAt: true },
+    })
+    if (!parent) break
+    if (parent.deletedAt) ids.push(parent.id)
+    currentId = parent.parentId
+  }
+
+  return ids
+}
+
 /** Restores a folder and everything archived alongside it in the same
  * archiveFolderTree call (matched by identical deletedAt timestamp), plus
- * walks up and restores any archived ancestors so the tree isn't left with
- * a restored item nested under a still-archived (invisible) parent. */
+ * restores any archived ancestors so the tree isn't left with a restored
+ * item nested under a still-archived (invisible) parent. All updates run in
+ * a single transaction so a failure partway leaves nothing half-restored. */
 async function restoreFolderTree(id) {
   const folder = await prisma.folder.findUnique({ where: { id } })
   if (!folder || !folder.deletedAt) return
 
   const descendantFolderIds = await listDescendantFolderIds(id)
   const allFolderIds = [id, ...descendantFolderIds]
+  const ancestorIds = await collectArchivedAncestorIds(folder.parentId)
 
   await prisma.$transaction([
     prisma.folder.updateMany({
@@ -252,37 +275,43 @@ async function restoreFolderTree(id) {
       where: { folderId: { in: allFolderIds }, deletedAt: folder.deletedAt },
       data: { deletedAt: null },
     }),
+    ...(ancestorIds.length > 0
+      ? [
+          prisma.folder.updateMany({
+            where: { id: { in: ancestorIds } },
+            data: { deletedAt: null },
+          }),
+        ]
+      : []),
   ])
-
-  await restoreAncestors(folder.parentId)
-}
-
-async function restoreAncestors(parentId) {
-  let currentId = parentId
-  while (currentId) {
-    const parent = await prisma.folder.findUnique({ where: { id: currentId } })
-    if (!parent) return
-    if (parent.deletedAt) {
-      await prisma.folder.update({ where: { id: parent.id }, data: { deletedAt: null } })
-    }
-    currentId = parent.parentId
-  }
 }
 
 function archiveFile(id, deletedAt) {
   return prisma.storageFile.update({ where: { id }, data: { deletedAt } })
 }
 
+/** Restores a single file plus any archived ancestor folders, all in one
+ * transaction (see restoreFolderTree for why this must be atomic). */
 async function restoreFile(id) {
   const file = await prisma.storageFile.findUnique({ where: { id } })
   if (!file) return null
 
-  const updated = await prisma.storageFile.update({
-    where: { id },
-    data: { deletedAt: null },
-  })
+  const ancestorIds = file.folderId
+    ? await collectArchivedAncestorIds(file.folderId)
+    : []
 
-  if (file.folderId) await restoreAncestors(file.folderId)
+  const [updated] = await prisma.$transaction([
+    prisma.storageFile.update({ where: { id }, data: { deletedAt: null } }),
+    ...(ancestorIds.length > 0
+      ? [
+          prisma.folder.updateMany({
+            where: { id: { in: ancestorIds } },
+            data: { deletedAt: null },
+          }),
+        ]
+      : []),
+  ])
+
   return updated
 }
 

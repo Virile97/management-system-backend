@@ -426,25 +426,32 @@ async function updateById(id, data, groupIds, levelId, lighthouseGroupId) {
 /** Counts records that block deletion via an `onDelete: Restrict` FK — soul-win
  * credit and NBC teacher assignments are meaningful history/relationships
  * that should never silently vanish, so deletion is blocked instead of
- * cascaded for these. */
-async function countDeleteBlockers(memberId) {
+ * cascaded for these.
+ *
+ * Accepts an optional transactional client (`tx`) so the caller can re-check
+ * blockers and perform the delete inside one `$transaction` — closing the
+ * race where a blocking row is inserted between the check and the delete,
+ * which would otherwise surface as a raw Postgres FK-violation error instead
+ * of the clean AppError.conflict message. */
+async function countDeleteBlockers(memberId, client = prisma) {
   const [soulWinCredits, nbcStudentsTaught] = await Promise.all([
-    prisma.soulWinWinner.count({ where: { memberId } }),
-    prisma.nbcEnrollment.count({ where: { teacherId: memberId } }),
+    client.soulWinWinner.count({ where: { memberId } }),
+    client.nbcEnrollment.count({ where: { teacherId: memberId } }),
   ])
   return { soulWinCredits, nbcStudentsTaught }
 }
 
 /** Same blocker check across a batch of members, grouped by memberId so the
- * caller can report exactly which ones are blocked and why. */
-async function countDeleteBlockersByIds(memberIds) {
+ * caller can report exactly which ones are blocked and why. Also accepts an
+ * optional transactional client — see countDeleteBlockers. */
+async function countDeleteBlockersByIds(memberIds, client = prisma) {
   const [soulWinRows, nbcRows] = await Promise.all([
-    prisma.soulWinWinner.groupBy({
+    client.soulWinWinner.groupBy({
       by: ['memberId'],
       where: { memberId: { in: memberIds } },
       _count: true,
     }),
-    prisma.nbcEnrollment.groupBy({
+    client.nbcEnrollment.groupBy({
       by: ['teacherId'],
       where: { teacherId: { in: memberIds } },
       _count: true,
@@ -467,8 +474,8 @@ async function countDeleteBlockersByIds(memberIds) {
   return blockers
 }
 
-function deleteById(id) {
-  return prisma.member.delete({ where: { id } })
+function deleteById(id, client = prisma) {
+  return client.member.delete({ where: { id } })
 }
 
 function findManyByIds(ids) {
@@ -478,8 +485,15 @@ function findManyByIds(ids) {
   })
 }
 
-function deleteManyByIds(ids) {
-  return prisma.member.deleteMany({ where: { id: { in: ids } } })
+function deleteManyByIds(ids, client = prisma) {
+  return client.member.deleteMany({ where: { id: { in: ids } } })
+}
+
+/** Runs `fn` (an async callback receiving a transactional Prisma client)
+ * inside a single transaction. Used to make "recheck blockers, then delete"
+ * atomic — see countDeleteBlockers. */
+function runInTransaction(fn) {
+  return prisma.$transaction(fn)
 }
 
 async function findConfig() {
@@ -513,6 +527,7 @@ module.exports = {
   updateById,
   countDeleteBlockers,
   countDeleteBlockersByIds,
+  runInTransaction,
   deleteById,
   findManyByIds,
   deleteManyByIds,

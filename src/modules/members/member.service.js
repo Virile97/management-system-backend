@@ -229,16 +229,22 @@ async function deleteMember(id, actorId) {
     throw AppError.notFound('Member not found')
   }
 
-  const blockers = await memberRepository.countDeleteBlockers(id)
-  const reason = describeDeleteBlockers(blockers)
-  if (reason) {
-    throw AppError.conflict(
-      `Cannot delete ${existing.firstName} ${existing.lastName}: ${reason}. Reassign or resolve these first.`,
-      blockers,
-    )
-  }
+  // Blocker recheck + delete run inside one transaction so a blocking row
+  // (soul-win credit, NBC teacher assignment) inserted between the check and
+  // the delete can't slip through — the delete would otherwise fail with a
+  // raw Postgres FK-violation error instead of this clean conflict message.
+  await memberRepository.runInTransaction(async (tx) => {
+    const blockers = await memberRepository.countDeleteBlockers(id, tx)
+    const reason = describeDeleteBlockers(blockers)
+    if (reason) {
+      throw AppError.conflict(
+        `Cannot delete ${existing.firstName} ${existing.lastName}: ${reason}. Reassign or resolve these first.`,
+        blockers,
+      )
+    }
 
-  await memberRepository.deleteById(id)
+    await memberRepository.deleteById(id, tx)
+  })
 
   logMemberActivity({
     action: 'MEMBER_DELETED',
@@ -256,32 +262,44 @@ async function deleteMembers(ids, actorId) {
     return { deletedCount: 0, deletedIds: [], blocked: [] }
   }
 
-  const blockersByMemberId = await memberRepository.countDeleteBlockersByIds(
-    existing.map((m) => m.id),
-  )
+  // Blocker recheck + delete run inside one transaction — see deleteMember
+  // for why (closes the check-then-delete race window).
+  const { deletable, blocked } = await memberRepository.runInTransaction(async (tx) => {
+    const blockersByMemberId = await memberRepository.countDeleteBlockersByIds(
+      existing.map((m) => m.id),
+      tx,
+    )
 
-  const deletable = []
-  const blocked = []
-  for (const member of existing) {
-    const reason = describeDeleteBlockers(blockersByMemberId.get(member.id) || {})
-    if (reason) {
-      blocked.push({
-        id: member.id,
-        name: `${member.firstName} ${member.lastName}`,
-        reason,
-      })
-    } else {
-      deletable.push(member)
+    const deletableMembers = []
+    const blockedMembers = []
+    for (const member of existing) {
+      const reason = describeDeleteBlockers(blockersByMemberId.get(member.id) || {})
+      if (reason) {
+        blockedMembers.push({
+          id: member.id,
+          name: `${member.firstName} ${member.lastName}`,
+          reason,
+        })
+      } else {
+        deletableMembers.push(member)
+      }
     }
-  }
+
+    if (deletableMembers.length > 0) {
+      await memberRepository.deleteManyByIds(
+        deletableMembers.map((m) => m.id),
+        tx,
+      )
+    }
+
+    return { deletable: deletableMembers, blocked: blockedMembers }
+  })
 
   if (deletable.length === 0) {
     return { deletedCount: 0, deletedIds: [], blocked }
   }
 
   const deletedIds = deletable.map((m) => m.id)
-  await memberRepository.deleteManyByIds(deletedIds)
-
   const names = deletable.map((m) => `${m.firstName} ${m.lastName}`)
   logMemberActivity({
     action: 'MEMBER_DELETED',
