@@ -1,5 +1,10 @@
 const fileStorageService = require('./file-storage.service')
 const { asyncHandler, ApiResponse } = require('../../shared/utils')
+const { verifyToken } = require('../../shared/utils/jwt')
+const prisma = require('../../config/prisma')
+const repo = require('./file-storage.repository')
+const { onThumbnailStatus } = require('./file-storage.events')
+const { AppError } = require('../../shared/errors')
 
 const listFiles = asyncHandler(async (req, res) => {
   const { items, meta } = await fileStorageService.listFiles(req.query)
@@ -16,12 +21,14 @@ const uploadFile = asyncHandler(async (req, res) => {
     { file: req.file, folderId: req.body.folderId, tags: req.body.tags },
     req.user,
   )
+
   return ApiResponse.created(res, data, 'File uploaded')
 })
 
 const getDownloadUrl = asyncHandler(async (req, res) => {
   const forceDownload = req.query.download === 'true'
   const data = await fileStorageService.getDownloadUrl(req.params.id, { forceDownload })
+
   return ApiResponse.success(res, data, 'Download link generated')
 })
 
@@ -95,6 +102,52 @@ const listArchived = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, data, 'Archived items retrieved')
 })
 
+const streamThumbnailStatus = asyncHandler(async (req, res) => {
+  const { token } = req.query
+  if (!token) throw AppError.unauthorized('Missing token')
+
+  let payload
+  try {
+    payload = verifyToken(token)
+  } catch {
+    throw AppError.unauthorized('Invalid or expired token')
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+  if (!user) throw AppError.unauthorized('User no longer exists')
+
+  const file = await repo.findFileById(req.params.id)
+  if (!file) throw AppError.notFound('File not found')
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+
+  const send = (status) => {
+    res.write(`event: thumbnail-status\ndata: ${JSON.stringify({ fileId: file.id, status })}\n\n`)
+  }
+
+  send(file.thumbnailStatus)
+  if (file.thumbnailStatus === 'READY' || file.thumbnailStatus === 'FAILED') {
+    return res.end()
+  }
+
+  const unsubscribe = onThumbnailStatus(file.id, (status) => {
+    send(status)
+    if (status === 'READY' || status === 'FAILED') res.end()
+  })
+
+  const heartbeat = setInterval(() => res.write(':heartbeat\n\n'), 25_000)
+
+  req.on('close', () => {
+    clearInterval(heartbeat)
+    unsubscribe()
+  })
+})
+
 module.exports = {
   listFiles,
   getStats,
@@ -114,4 +167,5 @@ module.exports = {
   permanentlyDeleteFolder,
   getFolderBreadcrumb,
   listArchived,
+  streamThumbnailStatus,
 }

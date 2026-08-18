@@ -20,6 +20,17 @@ const envSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional().default(''),
   R2_BUCKET: z.string().default('church-files'),
 
+  // Redis — backs the BullMQ queue that runs thumbnail generation as a
+  // durable background job instead of in-process fire-and-forget. Optional
+  // at the env-schema level so the app can still boot without it configured;
+  // only throws once a caller actually tries to use the queue — see
+  // src/config/redis.js.
+  REDIS_URL: z.string().optional().default(''),
+  // How many thumbnail jobs one worker process runs at once. ffmpeg/sharp/
+  // pdf-to-img are CPU-heavy, so this should track the worker container's
+  // CPU count, not scale with API traffic — tune per deploy, not per load.
+  THUMBNAIL_WORKER_CONCURRENCY: z.coerce.number().default(2),
+
   // File Storage upload ceiling (MB) — not enforced by R2 itself (no
   // per-file size cap to query via the API), just a client-facing limit.
   FILE_STORAGE_MAX_UPLOAD_MB: z.coerce.number().default(50),

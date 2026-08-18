@@ -2,10 +2,11 @@ const crypto = require('crypto')
 const repo = require('./file-storage.repository')
 const r2Storage = require('./file-storage.r2')
 const env = require('../../config/env')
+const logger = require('../../config/logger')
 const { AppError } = require('../../shared/errors')
 const { getPagination, buildMeta } = require('../../shared/utils')
 const { resolveFileType, SIGNED_URL_EXPIRY_SECONDS } = require('./file-storage.constants')
-const { queueThumbnailGeneration } = require('./file-storage.thumbnail')
+const { queueThumbnailGeneration } = require('./file-storage.queue')
 
 const bucket = env.R2_BUCKET
 
@@ -154,10 +155,20 @@ async function uploadFile({ file, folderId, tags }, user) {
       uploadedBy: user?.id || null,
     })
 
-    // Fire-and-forget — the upload response doesn't wait on thumbnail
-    // generation (PDF/video rendering can take seconds). Errors are caught
-    // and recorded as FAILED inside queueThumbnailGeneration itself.
-    queueThumbnailGeneration(created)
+    // Enqueues the thumbnail job and returns immediately — the upload
+    // response doesn't wait on actual generation (PDF/video rendering can
+    // take seconds). Generation itself runs durably in the BullMQ worker
+    // (file-storage.queue.js), so a server restart no longer abandons it.
+    // Kept outside the try/catch above: a queue outage (e.g. Redis down)
+    // must not be treated as "failed to save metadata" and trigger the R2
+    // cleanup below — the file record is already valid, just without a
+    // thumbnail queued yet. Never throws; leaves thumbnailStatus at NONE
+    // on failure so the file still shows up correctly in the UI.
+    try {
+      await queueThumbnailGeneration(created)
+    } catch (err) {
+      logger.error({ err, fileId: created.id }, 'Failed to enqueue thumbnail generation')
+    }
 
     return toFileResponse(created)
   } catch {

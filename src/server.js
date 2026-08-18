@@ -7,6 +7,14 @@ const server = app.listen(env.PORT, () => {
   logger.info(`Server running on port ${env.PORT} in ${env.NODE_ENV} mode`)
 })
 
+if (!env.REDIS_URL) {
+  logger.warn(
+    'REDIS_URL not set — thumbnail generation is disabled. Uploads still ' +
+      'succeed but thumbnailStatus stays NONE until Redis is configured and ' +
+      '`npm run worker` is running (see src/worker.js).',
+  )
+}
+
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     logger.error(

@@ -26,7 +26,17 @@ app.use(
     credentials: true,
   }),
 )
-app.use(compression())
+// Skip compression for SSE (text/event-stream) — compression buffers the
+// response until it has enough data to flush a chunk, which defeats
+// streaming and can stall the connection indefinitely.
+app.use(
+  compression({
+    filter: (req, res) => {
+      if (res.getHeader('Content-Type') === 'text/event-stream') return false
+      return compression.filter(req, res)
+    },
+  }),
+)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())

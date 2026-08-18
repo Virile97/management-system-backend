@@ -18,6 +18,14 @@ const {
 
 const router = Router()
 
+// Not behind `authenticate` — EventSource can't set an Authorization header,
+// so this route verifies a `?token=` query param itself (see controller).
+router.get(
+  '/:id/events',
+  validate(idParamSchema),
+  controller.streamThumbnailStatus,
+)
+
 router.use(authenticate)
 
 router.get('/stats', controller.getStats)
