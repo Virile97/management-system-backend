@@ -55,7 +55,6 @@ const memberFieldsSchema = {
   gender: z.enum(['MALE', 'FEMALE']).optional(),
   isNewBeliever: z.boolean().optional(),
   statusId: z.string().uuid('Invalid statusId').optional(),
-  levelId: z.string().uuid('Invalid levelId').optional(),
   lighthouseGroupId: z.string().uuid('Invalid lighthouseGroupId').optional(),
   groupIds: z.array(z.string().uuid('Invalid groupId')).optional(),
 }
@@ -64,6 +63,7 @@ const createMemberSchema = z.object({
   body: z.object({
     firstName: z.string().min(1, 'First name is required'),
     lastName: z.string().min(1, 'Last name is required'),
+    levelId: z.string().uuid('Invalid levelId').min(1, 'levelId is required'),
     ...memberFieldsSchema,
   }),
 })
@@ -75,6 +75,7 @@ const updateMemberSchema = z.object({
   body: z.object({
     firstName: z.string().min(1).optional(),
     lastName: z.string().min(1).optional(),
+    levelId: z.string().uuid('Invalid levelId').optional(),
     ...memberFieldsSchema,
   }),
 })

@@ -6,12 +6,7 @@ const memberAttendanceSelect = {
   firstName: true,
   middleName: true,
   lastName: true,
-  groups: {
-    select: {
-      level: { select: { id: true, name: true } },
-    },
-    take: 1,
-  },
+  level: { select: { id: true, name: true } },
 }
 
 // Normalize to a UTC midnight calendar day so @db.Date keys stay stable
@@ -40,7 +35,7 @@ function buildMemberWhere({ search, level }) {
   }
 
   if (level) {
-    where.groups = { some: { level: { name: level } } }
+    where.level = { name: level }
   }
 
   return where
@@ -60,11 +55,8 @@ function buildMemberFilterSql({ search, level }) {
 
   if (level) {
     conditions.push(Prisma.sql`EXISTS (
-      SELECT 1
-      FROM member_groups mg
-      INNER JOIN levels l ON l.id = mg."levelId"
-      WHERE mg."memberId" = m.id
-        AND l.name = ${level}
+      SELECT 1 FROM levels l
+      WHERE l.id = m."levelId" AND l.name = ${level}
     )`)
   }
 
@@ -246,9 +238,9 @@ async function countMembersByLevel() {
     SELECT
       l.id,
       l.name,
-      COUNT(DISTINCT mg."memberId")::int AS count
+      COUNT(m.id)::int AS count
     FROM levels l
-    LEFT JOIN member_groups mg ON mg."levelId" = l.id
+    LEFT JOIN members m ON m."levelId" = l.id
     GROUP BY l.id, l.name
     ORDER BY l.name ASC
   `

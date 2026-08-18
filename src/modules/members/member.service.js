@@ -6,19 +6,14 @@ const logger = require('../../config/logger')
 const { resolvePeriodRange } = require('../../shared/utils/period-range')
 const { toAttendanceDay } = require('../attendance/attendance.mapper')
 
-// level/lighthouseGroup now live on each member_groups row (duplicated across
-// a member's rows), so the member-level view reads them off the first row.
 // groups is flattened to a plain array of { id, role }, and the raw FK ids
 // are dropped since the nested status/level/lighthouseGroup objects replace
 // them.
 function toMemberResponse(member) {
-  const { statusId: _statusId, groups, attendances, ...rest } = member
-  const [firstGroup] = groups
+  const { statusId: _statusId, levelId: _levelId, lighthouseGroupId: _lighthouseGroupId, groups, attendances, ...rest } = member
 
   return {
     ...rest,
-    level: firstGroup?.level ?? null,
-    lighthouseGroup: firstGroup?.lighthouseGroup ?? null,
     groups: groups.map(({ group }) => group),
     ...(attendances !== undefined
       ? { attendances: attendances.map(toAttendanceDay) }

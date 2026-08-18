@@ -8,6 +8,7 @@ const {
   byOfferingTypeSchema,
   createTransactionSchema,
   updateTransactionSchema,
+  bulkDeleteTransactionsSchema,
 } = require('./transaction.validation')
 const { idParamSchema } = require('../../shared/validators/common.validation')
 const { ROLES } = require('../../config/constants')
@@ -27,6 +28,12 @@ router.get('/config', transactionController.getConfig)
 router.get('/', validate(listTransactionsSchema), transactionController.listTransactions)
 router.get('/:id', validate(idParamSchema), transactionController.getTransaction)
 router.post('/', validate(createTransactionSchema), transactionController.createTransaction)
+router.post(
+  '/bulk-delete',
+  validate(bulkDeleteTransactionsSchema),
+  transactionController.bulkDeleteTransactions,
+)
 router.patch('/:id', validate(updateTransactionSchema), transactionController.updateTransaction)
+router.delete('/:id', validate(idParamSchema), transactionController.deleteTransaction)
 
 module.exports = router

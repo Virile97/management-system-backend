@@ -20,7 +20,13 @@ const authenticate = asyncHandler(async (req, res, next) => {
     throw AppError.unauthorized('Invalid or expired token')
   }
 
-  const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+  let user
+  try {
+    user = await prisma.user.findUnique({ where: { id: payload.sub } })
+  } catch (_err) {
+    throw AppError.internal('Unable to verify user right now')
+  }
+
   if (!user) {
     throw AppError.unauthorized('User no longer exists')
   }

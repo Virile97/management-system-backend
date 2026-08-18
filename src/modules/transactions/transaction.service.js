@@ -200,6 +200,44 @@ async function updateTransaction(id, data) {
   return toTransactionResponse(transaction)
 }
 
+async function deleteTransaction(id, actorId) {
+  const existing = await transactionRepository.findById(id)
+  if (!existing) {
+    throw AppError.notFound('Transaction not found')
+  }
+
+  await transactionRepository.deleteById(id)
+
+  logActivity({
+    action: 'TRANSACTION_DELETED',
+    message: existing.type.name === 'Expense' ? 'Expense deleted' : 'Income deleted',
+    detail: existing.category?.name ?? existing.description ?? undefined,
+    actorId,
+  }).catch((err) => logger.error({ err }, 'Failed to log TRANSACTION_DELETED activity'))
+}
+
+async function deleteTransactions(ids, actorId) {
+  const uniqueIds = [...new Set(ids)]
+  const existing = await Promise.all(uniqueIds.map((id) => transactionRepository.findById(id)))
+  const found = existing.filter(Boolean)
+
+  if (found.length === 0) {
+    return { deletedCount: 0, deletedIds: [] }
+  }
+
+  const foundIds = found.map((t) => t.id)
+  await transactionRepository.deleteManyByIds(foundIds)
+
+  logActivity({
+    action: 'TRANSACTION_DELETED',
+    message: `Deleted ${found.length} transaction${found.length === 1 ? '' : 's'}`,
+    metadata: { transactionIds: foundIds },
+    actorId,
+  }).catch((err) => logger.error({ err }, 'Failed to log TRANSACTION_DELETED activity'))
+
+  return { deletedCount: found.length, deletedIds: foundIds }
+}
+
 module.exports = {
   listTransactions,
   getTransactionById,
@@ -209,4 +247,6 @@ module.exports = {
   getConfig,
   createTransaction,
   updateTransaction,
+  deleteTransaction,
+  deleteTransactions,
 }

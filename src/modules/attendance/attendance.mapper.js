@@ -54,7 +54,7 @@ function toMemberName(member) {
 }
 
 function toAttendanceItem(member, attendances, { singleDay }) {
-  const level = member.groups[0]?.level ?? null
+  const level = member.level ?? null
   const base = {
     member: {
       id: member.id,

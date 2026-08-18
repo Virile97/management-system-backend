@@ -78,6 +78,7 @@ enum ActivityAction {
   MEMBER_DELETED
   INCOME_RECORDED
   EXPENSE_RECORDED
+  TRANSACTION_DELETED
   USER_LOGGED_IN
   SOUL_WON
   SOUL_BAPTIZED
@@ -119,39 +120,33 @@ model Group {
 }
 
 model MemberGroup {
-  member            Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  memberId          String
-  group             Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  groupId           String
-  level             Level?           @relation(fields: [levelId], references: [id])
-  levelId           String?
-  lighthouseGroup   LighthouseGroup? @relation(fields: [lighthouseGroupId], references: [id])
-  lighthouseGroupId String?
-  createdAt         DateTime         @default(now())
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId  String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId   String
+  createdAt DateTime @default(now())
 
   @@id([memberId, groupId])
   @@index([groupId])
-  @@index([levelId])
-  @@index([lighthouseGroupId])
   @@map("member_groups")
 }
 
 model Level {
-  id        String        @id @default(uuid())
-  name      String        @unique
-  members   MemberGroup[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id        String   @id @default(uuid())
+  name      String   @unique
+  members   Member[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("levels")
 }
 
 model LighthouseGroup {
-  id        String        @id @default(uuid())
-  name      String        @unique
-  members   MemberGroup[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id        String   @id @default(uuid())
+  name      String   @unique
+  members   Member[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("lighthouse_groups")
 }
@@ -173,6 +168,10 @@ model Member {
   isNewBeliever Boolean     @default(false)
   soulWinner  String?
   groups      MemberGroup[]
+  level             Level            @relation(fields: [levelId], references: [id])
+  levelId           String
+  lighthouseGroup   LighthouseGroup? @relation(fields: [lighthouseGroupId], references: [id])
+  lighthouseGroupId String?
   status      Status?       @relation(fields: [statusId], references: [id])
   statusId    String?
   addedByUser User?         @relation("MemberAddedBy", fields: [addedBy], references: [id])
@@ -190,6 +189,8 @@ model Member {
   @@index([statusId])
   @@index([createdAt])
   @@index([isNewBeliever])
+  @@index([levelId])
+  @@index([lighthouseGroupId])
   @@map("members")
 }
 

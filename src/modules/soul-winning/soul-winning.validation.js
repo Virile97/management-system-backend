@@ -147,18 +147,15 @@ const baptizeRecordSchema = z.object({
       year: z.coerce.number().int().min(2000).max(2100).optional(),
     })
     .optional(),
-  body: z
-    .object({
-      baptizedAt: z.coerce.date().optional(),
-      email: z.string().email().optional(),
-      gender: z.enum(['MALE', 'FEMALE']).optional(),
-      birthDate: z.coerce.date().optional(),
-      groupIds: z.array(z.string().uuid('Invalid groupId')).optional(),
-      levelId: z.string().uuid('Invalid levelId').optional(),
-      lighthouseGroupId: z.string().uuid('Invalid lighthouseGroupId').optional(),
-    })
-    .optional()
-    .default({}),
+  body: z.object({
+    baptizedAt: z.coerce.date().optional(),
+    email: z.string().email().optional(),
+    gender: z.enum(['MALE', 'FEMALE']).optional(),
+    birthDate: z.coerce.date().optional(),
+    groupIds: z.array(z.string().uuid('Invalid groupId')).optional(),
+    levelId: z.string().uuid('Invalid levelId').min(1, 'levelId is required'),
+    lighthouseGroupId: z.string().uuid('Invalid lighthouseGroupId').optional(),
+  }),
 })
 
 const upsertGoalSchema = z.object({

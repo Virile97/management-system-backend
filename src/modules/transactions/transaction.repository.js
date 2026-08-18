@@ -359,6 +359,17 @@ function updateById(id, { typeId, categoryId, memberId, description, date, amoun
   })
 }
 
+// TransactionItem.transactionId is onDelete: Cascade at the schema level, so
+// a plain delete already removes the breakdown rows atomically — no need for
+// an interactive $transaction (see the create()/updateById() comments above).
+function deleteById(id) {
+  return prisma.transaction.delete({ where: { id } })
+}
+
+function deleteManyByIds(ids) {
+  return prisma.transaction.deleteMany({ where: { id: { in: ids } } })
+}
+
 module.exports = {
   findMany,
   count,
@@ -371,4 +382,6 @@ module.exports = {
   findConfig,
   create,
   updateById,
+  deleteById,
+  deleteManyByIds,
 }

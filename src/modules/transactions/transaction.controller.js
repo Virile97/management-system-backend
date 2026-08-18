@@ -41,6 +41,16 @@ const updateTransaction = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, transaction, 'Transaction updated successfully')
 })
 
+const deleteTransaction = asyncHandler(async (req, res) => {
+  await transactionService.deleteTransaction(req.params.id, req.user.id)
+  return ApiResponse.noContent(res)
+})
+
+const bulkDeleteTransactions = asyncHandler(async (req, res) => {
+  const result = await transactionService.deleteTransactions(req.body.ids, req.user.id)
+  return ApiResponse.success(res, result, 'Transactions deleted successfully')
+})
+
 module.exports = {
   listTransactions,
   getTransaction,
@@ -50,4 +60,6 @@ module.exports = {
   getConfig,
   createTransaction,
   updateTransaction,
+  deleteTransaction,
+  bulkDeleteTransactions,
 }

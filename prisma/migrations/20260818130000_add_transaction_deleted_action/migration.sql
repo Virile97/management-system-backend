@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ActivityAction" ADD VALUE 'TRANSACTION_DELETED';

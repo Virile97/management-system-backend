@@ -15,7 +15,12 @@ function errorHandler(err, req, res, _next) {
 
   logger.error({ err }, 'Unhandled error')
 
-  const message = env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  // Prisma errors (e.g. "Can't reach database server at ...") carry raw
+  // connection strings/hostnames in their message — never forward those to
+  // the client, even in development.
+  const isPrismaError = err.constructor?.name?.startsWith('PrismaClient')
+  const message =
+    env.NODE_ENV === 'development' && !isPrismaError ? err.message : 'Something went wrong'
   return ApiResponse.error(res, message, 500, ErrorCodes.INTERNAL_ERROR)
 }
 

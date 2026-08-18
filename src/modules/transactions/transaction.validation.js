@@ -64,10 +64,17 @@ const updateTransactionSchema = z.object({
     }),
 })
 
+const bulkDeleteTransactionsSchema = z.object({
+  body: z.object({
+    ids: z.array(z.string().uuid('Invalid id format')).min(1, 'ids must contain at least one id'),
+  }),
+})
+
 module.exports = {
   listTransactionsSchema,
   periodQuerySchema,
   byOfferingTypeSchema,
   createTransactionSchema,
   updateTransactionSchema,
+  bulkDeleteTransactionsSchema,
 }

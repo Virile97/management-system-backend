@@ -401,19 +401,13 @@ async function baptizeRecord(id, data = {}, actorId, query = {}) {
       isBaptized: true,
       baptizedAt,
       addedBy: actorId,
+      levelId: data.levelId,
       ...(data.gender ? { gender: data.gender } : {}),
       ...(data.birthDate ? { birthDate: data.birthDate } : {}),
       ...(data.email ? { email: data.email } : {}),
+      ...(data.lighthouseGroupId ? { lighthouseGroupId: data.lighthouseGroupId } : {}),
       ...(data.groupIds?.length
-        ? {
-            groups: {
-              create: data.groupIds.map((groupId) => ({
-                groupId,
-                ...(data.levelId ? { levelId: data.levelId } : {}),
-                ...(data.lighthouseGroupId ? { lighthouseGroupId: data.lighthouseGroupId } : {}),
-              })),
-            },
-          }
+        ? { groups: { create: data.groupIds.map((groupId) => ({ groupId })) } }
         : {}),
     },
   })

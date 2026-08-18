@@ -465,15 +465,13 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
   await prisma.member.update({
     where: { id: margaret.id },
     data: {
+      levelId: levels['Ladies'].id,
+      lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
       groups: {
         connectOrCreate: [
           {
             where: { memberId_groupId: { memberId: margaret.id, groupId: groups['Choir'].id } },
-            create: {
-              groupId: groups['Choir'].id,
-              levelId: levels['Ladies'].id,
-              lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
-            },
+            create: { groupId: groups['Choir'].id },
           },
           {
             where: {
@@ -482,11 +480,7 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
                 groupId: groups["Women's Ministry"].id,
               },
             },
-            create: {
-              groupId: groups["Women's Ministry"].id,
-              levelId: levels['Ladies'].id,
-              lighthouseGroupId: lighthouseGroups['Lighthouse 1'].id,
-            },
+            create: { groupId: groups["Women's Ministry"].id },
           },
         ],
       },
@@ -496,15 +490,13 @@ async function seedMemberGroupAssignments(members, groups, levels, lighthouseGro
   await prisma.member.update({
     where: { id: grace.id },
     data: {
+      levelId: levels['Young Ladies'].id,
+      lighthouseGroupId: lighthouseGroups['Lighthouse 2'].id,
       groups: {
         connectOrCreate: [
           {
             where: { memberId_groupId: { memberId: grace.id, groupId: groups['Ushers'].id } },
-            create: {
-              groupId: groups['Ushers'].id,
-              levelId: levels['Young Ladies'].id,
-              lighthouseGroupId: lighthouseGroups['Lighthouse 2'].id,
-            },
+            create: { groupId: groups['Ushers'].id },
           },
         ],
       },
