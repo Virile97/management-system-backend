@@ -364,6 +364,10 @@ describe('soul-winning.service', () => {
         location: 'Madina',
       })
       vi.spyOn(memberRepository, 'findByName').mockResolvedValue(null)
+      vi.spyOn(soulWinningRepository, 'findDefaultLevel').mockResolvedValue({
+        id: 'l1',
+        name: 'Young People',
+      })
       vi.spyOn(soulWinningRepository, 'baptize').mockResolvedValue({
         soulWin: { id: 'sw1', memberId: 'm2' },
         member: {

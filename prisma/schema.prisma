@@ -166,7 +166,7 @@ model Member {
   baptizedAt  DateTime?
   /// Marks a member as a New Believers Class student (curriculum track).
   isNewBeliever Boolean     @default(false)
-  soulWinner  String?
+  needsUpdate Boolean       @default(false)
   groups      MemberGroup[]
   level             Level            @relation(fields: [levelId], references: [id])
   levelId           String
@@ -234,7 +234,7 @@ model SoulWinWinner {
 
   @@id([soulWinId, memberId])
   @@index([memberId, soulWinId])
-  @@map("soul_win_winners")
+  @@map("soul_winners")
 }
 
 model SoulWinningGoal {

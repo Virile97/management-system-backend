@@ -388,6 +388,15 @@ async function baptizeRecord(id, data = {}, actorId, query = {}) {
     )
   }
 
+  let levelId = data.levelId
+  let usedDefaultLevel = false
+  if (!levelId) {
+    const defaultLevel = await soulWinningRepository.findDefaultLevel()
+    if (!defaultLevel) throw AppError.internal('No level available to assign this member')
+    levelId = defaultLevel.id
+    usedDefaultLevel = true
+  }
+
   const baptizedAt = data.baptizedAt ?? new Date()
   const result = await soulWinningRepository.baptize(id, {
     baptizedAt,
@@ -401,7 +410,11 @@ async function baptizeRecord(id, data = {}, actorId, query = {}) {
       isBaptized: true,
       baptizedAt,
       addedBy: actorId,
-      levelId: data.levelId,
+      levelId,
+      // Level wasn't explicitly chosen at baptism time — flag the new
+      // member for a human to review/correct rather than silently leaving
+      // them on a guessed level.
+      needsUpdate: usedDefaultLevel,
       ...(data.gender ? { gender: data.gender } : {}),
       ...(data.birthDate ? { birthDate: data.birthDate } : {}),
       ...(data.email ? { email: data.email } : {}),

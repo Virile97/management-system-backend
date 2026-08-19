@@ -423,7 +423,7 @@ async function updateById(id, data, groupIds, levelId, lighthouseGroupId) {
   })
 }
 
-/** soul_win_winners.memberId and nbc_enrollments.teacherId are both
+/** soul_winners.memberId and nbc_enrollments.teacherId are both
  * `onDelete: Restrict` at the DB level — deleting a member who's credited on
  * a soul-win record or teaching NBC students fails with a raw Postgres FK
  * violation unless those dependent rows are removed first. Deleting a

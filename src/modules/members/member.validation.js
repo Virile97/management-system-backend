@@ -55,6 +55,7 @@ const memberFieldsSchema = {
   age: z.coerce.number().int().positive().optional(),
   gender: z.enum(['MALE', 'FEMALE']).optional(),
   isNewBeliever: z.boolean().optional(),
+  needsUpdate: z.boolean().optional(),
   statusId: z.string().uuid('Invalid statusId').optional(),
   lighthouseGroupId: z.string().uuid('Invalid lighthouseGroupId').optional(),
   groupIds: z.array(z.string().uuid('Invalid groupId')).optional(),

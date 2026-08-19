@@ -1,6 +1,15 @@
 const { Prisma } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 
+// Fallback level for baptize-to-member when the caller doesn't pick one —
+// the frontend's baptize button doesn't collect a level yet, and a member
+// row can't exist without one (Member.levelId is required).
+const DEFAULT_LEVEL_NAME = 'Young People'
+
+function findDefaultLevel() {
+  return prisma.level.findUnique({ where: { name: DEFAULT_LEVEL_NAME } })
+}
+
 function buildWonAtFilterSql({ start, end } = {}) {
   const conditions = [Prisma.sql`TRUE`]
   if (start) conditions.push(Prisma.sql`sw."wonAt" >= ${start}`)
@@ -15,7 +24,7 @@ function buildListFilterSql({ search, status, winnerMemberId, event, start, end 
     // Filter records where this member is one of the soul winners.
     conditions.push(Prisma.sql`EXISTS (
       SELECT 1
-      FROM soul_win_winners sww
+      FROM soul_winners sww
       WHERE sww."soulWinId" = sw.id
         AND sww."memberId" = ${winnerMemberId}
     )`)
@@ -37,7 +46,7 @@ function buildListFilterSql({ search, status, winnerMemberId, event, start, end 
       OR sw.event ILIKE ${pattern}
       OR EXISTS (
         SELECT 1
-        FROM soul_win_winners sww
+        FROM soul_winners sww
         INNER JOIN members w ON w.id = sww."memberId"
         WHERE sww."soulWinId" = sw.id
           AND (
@@ -93,7 +102,7 @@ const winnersJsonSql = Prisma.sql`
       )
       ORDER BY sww."sortOrder" ASC, w."lastName" ASC, w."firstName" ASC
     )
-    FROM soul_win_winners sww
+    FROM soul_winners sww
     INNER JOIN members w ON w.id = sww."memberId"
     WHERE sww."soulWinId" = sw.id
   ), '[]'::json)
@@ -292,7 +301,7 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
           WHERE sw."memberId" IS NULL
              OR (sw."memberId" IS NOT NULL AND s.name = 'Inactive')
         )::int AS "needFollowUp"
-      FROM soul_win_winners sww
+      FROM soul_winners sww
       INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
       INNER JOIN members w ON w.id = sww."memberId"
       LEFT JOIN members m ON m.id = sw."memberId"
@@ -306,7 +315,7 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
       SELECT COUNT(*)::int AS total
       FROM (
         SELECT w.id
-        FROM soul_win_winners sww
+        FROM soul_winners sww
         INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
         INNER JOIN members w ON w.id = sww."memberId"
         WHERE ${whereSql}
@@ -317,7 +326,7 @@ async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}
       SELECT COALESCE(SUM(c.cnt), 0)::int AS "totalSouls"
       FROM (
         SELECT COUNT(*)::int AS cnt
-        FROM soul_win_winners sww
+        FROM soul_winners sww
         INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
         INNER JOIN members w ON w.id = sww."memberId"
         WHERE ${whereSql}
@@ -512,7 +521,7 @@ async function sumLeaderboard({ start, end, limit = 10 }) {
       w."firstName",
       w."lastName",
       COUNT(*)::int AS count
-    FROM soul_win_winners sww
+    FROM soul_winners sww
     INNER JOIN soul_wins sw ON sw.id = sww."soulWinId"
     INNER JOIN members w ON w.id = sww."memberId"
     WHERE ${whereSql}
@@ -721,6 +730,7 @@ module.exports = {
   create,
   updateById,
   baptize,
+  findDefaultLevel,
   findGoal,
   findAnnualGoal,
   upsertGoal,
