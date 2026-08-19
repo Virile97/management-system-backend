@@ -37,7 +37,7 @@ function buildWhere({ search, status, levelId, from, to }) {
   }
 
   if (from || to) {
-    where.createdAt = {
+    where.baptizedAt = {
       ...(from ? { gte: from } : {}),
       ...(to ? { lte: endOfDay(to) } : {}),
     }
@@ -69,11 +69,11 @@ function buildMemberFilterSql({ search, status, from, to }) {
   }
 
   if (from) {
-    conditions.push(Prisma.sql`m."createdAt" >= ${from}`)
+    conditions.push(Prisma.sql`m."baptizedAt" >= ${from}`)
   }
 
   if (to) {
-    conditions.push(Prisma.sql`m."createdAt" <= ${endOfDay(to)}`)
+    conditions.push(Prisma.sql`m."baptizedAt" <= ${endOfDay(to)}`)
   }
 
   return Prisma.join(conditions, ' AND ')
