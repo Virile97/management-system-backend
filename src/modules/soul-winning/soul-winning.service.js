@@ -287,6 +287,18 @@ async function createRecord(data, actorId, query = {}) {
     )
   }
 
+  const nameConflict = await soulWinningRepository.findByName(
+    data.firstName.trim(),
+    data.lastName.trim(),
+  )
+  if (nameConflict) {
+    throw new AppError(
+      'A soul win record with this name already exists',
+      409,
+      ErrorCodes.SOUL_WIN_NAME_EXISTS,
+    )
+  }
+
   const created = await soulWinningRepository.create({
     firstName: data.firstName.trim(),
     middleName: data.middleName?.trim() || null,

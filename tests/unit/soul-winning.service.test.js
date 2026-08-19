@@ -321,6 +321,22 @@ describe('soul-winning.service', () => {
         ),
       ).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_WINNER' })
     })
+
+    it('rejects a soul win record with a duplicate name', async () => {
+      vi.spyOn(soulWinningRepository, 'membersExist').mockResolvedValue(true)
+      vi.spyOn(soulWinningRepository, 'findByName').mockResolvedValue({
+        id: 'sw1',
+        firstName: 'Ama',
+        lastName: 'Kufuor',
+      })
+
+      await expect(
+        soulWinningService.createRecord(
+          { firstName: 'Ama', lastName: 'Kufuor', winnerMemberIds: ['m1'] },
+          'u1',
+        ),
+      ).rejects.toMatchObject({ statusCode: 409, code: 'SOUL_WIN_NAME_EXISTS' })
+    })
   })
 
   describe('baptizeRecord', () => {

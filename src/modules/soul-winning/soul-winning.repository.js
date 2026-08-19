@@ -213,6 +213,16 @@ function findRawById(id) {
   })
 }
 
+function findByName(firstName, lastName) {
+  return prisma.soulWin.findFirst({
+    where: {
+      firstName: { equals: firstName, mode: 'insensitive' },
+      lastName: { equals: lastName, mode: 'insensitive' },
+    },
+    select: { id: true, firstName: true, lastName: true },
+  })
+}
+
 function memberExists(id) {
   return prisma.member.findUnique({ where: { id }, select: { id: true } }).then(Boolean)
 }
@@ -715,6 +725,7 @@ module.exports = {
   count,
   findById,
   findRawById,
+  findByName,
   memberExists,
   membersExist,
   findActiveStatusId,
