@@ -22,7 +22,7 @@ function endOfDay(date) {
   return end
 }
 
-function buildWhere({ search, status, from, to }) {
+function buildWhere({ search, status, levelId, from, to }) {
   const where = {}
 
   const nameSearch = buildMemberNameSearchWhere(search)
@@ -30,6 +30,10 @@ function buildWhere({ search, status, from, to }) {
 
   if (status) {
     where.status = { name: status }
+  }
+
+  if (levelId) {
+    where.levelId = levelId
   }
 
   if (from || to) {
@@ -75,9 +79,9 @@ function buildMemberFilterSql({ search, status, from, to }) {
   return Prisma.join(conditions, ' AND ')
 }
 
-function findMany({ skip, limit, search, status, from, to }) {
+function findMany({ skip, limit, search, status, levelId, from, to }) {
   return prisma.member.findMany({
-    where: buildWhere({ search, status, from, to }),
+    where: buildWhere({ search, status, levelId, from, to }),
     skip,
     take: limit,
     orderBy: { createdAt: 'desc' },
@@ -85,8 +89,8 @@ function findMany({ skip, limit, search, status, from, to }) {
   })
 }
 
-function count({ search, status, from, to }) {
-  return prisma.member.count({ where: buildWhere({ search, status, from, to }) })
+function count({ search, status, levelId, from, to }) {
+  return prisma.member.count({ where: buildWhere({ search, status, levelId, from, to }) })
 }
 
 /**
@@ -199,6 +203,24 @@ function findByEmail(email) {
     where: { email: { equals: email, mode: 'insensitive' } },
     select: { id: true, firstName: true, lastName: true, email: true },
   })
+}
+
+/** Distinct, non-empty addresses already saved on members — backs the
+ * address-field autocomplete on the add/edit member form. */
+async function findDistinctAddresses(search) {
+  const rows = await prisma.member.findMany({
+    where: {
+      address: {
+        not: null,
+        ...(search ? { contains: search, mode: 'insensitive' } : {}),
+      },
+    },
+    distinct: ['address'],
+    select: { address: true },
+    orderBy: { address: 'asc' },
+    take: 20,
+  })
+  return rows.map((row) => row.address).filter(Boolean)
 }
 
 function buildOfferingTxFilterSql(memberId, range = {}, offeringTypeIds) {
@@ -464,6 +486,7 @@ module.exports = {
   existsById,
   findByName,
   findByEmail,
+  findDistinctAddresses,
   findAttendancesByMemberId,
   countAttendancesByMemberId,
   findOfferingsByMemberId,

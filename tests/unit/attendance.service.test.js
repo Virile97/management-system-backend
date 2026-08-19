@@ -87,14 +87,14 @@ describe('attendance.service', () => {
           firstName: 'Emmanuel',
           middleName: null,
           lastName: 'Boateng',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
+          level: { id: 'l1', name: 'Men' },
         },
         {
           id: 'm1',
           firstName: 'Pastor',
           middleName: null,
           lastName: 'Admin',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
+          level: { id: 'l1', name: 'Men' },
         },
       ])
       const prioritizeSpy = vi.spyOn(
@@ -155,14 +155,14 @@ describe('attendance.service', () => {
           firstName: 'Pastor',
           middleName: null,
           lastName: 'Admin',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
+          level: { id: 'l1', name: 'Men' },
         },
         {
           id: 'm2',
           firstName: 'Emmanuel',
           middleName: null,
           lastName: 'Boateng',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
+          level: { id: 'l1', name: 'Men' },
         },
       ])
       vi.spyOn(attendanceRepository, 'countMembers').mockResolvedValue(2)
@@ -212,7 +212,7 @@ describe('attendance.service', () => {
           firstName: 'Pastor',
           middleName: null,
           lastName: 'Admin',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
+          level: { id: 'l1', name: 'Men' },
         },
         {
           id: 'm2',
@@ -324,7 +324,7 @@ describe('attendance.service', () => {
           firstName: 'Pastor',
           middleName: null,
           lastName: 'Admin',
-          groups: [{ level: { id: 'l1', name: 'Men' } }],
+          level: { id: 'l1', name: 'Men' },
         },
       ])
       vi.spyOn(attendanceRepository, 'countMembers').mockResolvedValue(1)

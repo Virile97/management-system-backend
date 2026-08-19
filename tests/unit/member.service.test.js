@@ -190,13 +190,9 @@ describe('member.service', () => {
           email: 'margaret@example.com',
           statusId: 's1',
           status: { id: 's1', name: 'Active' },
-          groups: [
-            {
-              group: { id: 'g1', role: 'Member' },
-              level: { id: 'l1', name: 'Men' },
-              lighthouseGroup: null,
-            },
-          ],
+          level: { id: 'l1', name: 'Men' },
+          lighthouseGroup: null,
+          groups: [{ group: { id: 'g1', role: 'Member' } }],
         },
       ])
       vi.spyOn(memberRepository, 'count').mockResolvedValue(1)

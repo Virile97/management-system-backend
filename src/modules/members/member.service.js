@@ -23,11 +23,11 @@ function toMemberResponse(member) {
 
 async function listMembers(query) {
   const { page, limit, skip } = getPagination(query)
-  const { search, status, from, to } = query
+  const { search, status, levelId, from, to } = query
 
   const [members, total] = await Promise.all([
-    memberRepository.findMany({ skip, limit, search, status, from, to }),
-    memberRepository.count({ search, status, from, to }),
+    memberRepository.findMany({ skip, limit, search, status, levelId, from, to }),
+    memberRepository.count({ search, status, levelId, from, to }),
   ])
 
   return {
@@ -251,6 +251,10 @@ async function deleteMembers(ids, actorId) {
   return { deletedCount: existing.length, deletedIds: existingIds, blocked: [] }
 }
 
+async function getAddressSuggestions(search) {
+  return memberRepository.findDistinctAddresses(search)
+}
+
 module.exports = {
   listMembers,
   getBreakdown,
@@ -261,4 +265,5 @@ module.exports = {
   updateMember,
   deleteMember,
   deleteMembers,
+  getAddressSuggestions,
 }

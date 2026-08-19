@@ -49,6 +49,11 @@ const bulkDeleteMembers = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, result, message)
 })
 
+const getAddressSuggestions = asyncHandler(async (req, res) => {
+  const data = await memberService.getAddressSuggestions(req.query.search)
+  return ApiResponse.success(res, data, 'Address suggestions retrieved')
+})
+
 module.exports = {
   listMembers,
   getBreakdown,
@@ -59,4 +64,5 @@ module.exports = {
   updateMember,
   deleteMember,
   bulkDeleteMembers,
+  getAddressSuggestions,
 }

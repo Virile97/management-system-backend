@@ -10,6 +10,7 @@ const {
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,
+  addressSuggestionsSchema,
 } = require('./member.validation')
 const { idParamSchema } = require('../../shared/validators/common.validation')
 const { ROLES } = require('../../config/constants')
@@ -20,6 +21,11 @@ router.use(authenticate)
 
 router.get('/config', memberController.getConfig)
 router.get('/breakdown', validate(memberBreakdownSchema), memberController.getBreakdown)
+router.get(
+  '/addresses',
+  validate(addressSuggestionsSchema),
+  memberController.getAddressSuggestions,
+)
 router.get('/', validate(listMembersSchema), memberController.listMembers)
 router.get('/:id', validate(getMemberSchema), memberController.getMember)
 // Financial data, so it follows the same role gate as the transactions module.

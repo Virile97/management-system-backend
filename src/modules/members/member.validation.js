@@ -7,6 +7,7 @@ const listMembersSchema = z.object({
     limit: z.coerce.number().int().positive().optional(),
     search: z.string().min(1).optional(),
     status: z.string().min(1).optional(),
+    levelId: z.string().uuid('Invalid levelId').optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
   }),
@@ -86,6 +87,12 @@ const bulkDeleteMembersSchema = z.object({
   }),
 })
 
+const addressSuggestionsSchema = z.object({
+  query: z.object({
+    search: z.string().min(1).optional(),
+  }),
+})
+
 module.exports = {
   listMembersSchema,
   memberBreakdownSchema,
@@ -94,4 +101,5 @@ module.exports = {
   createMemberSchema,
   updateMemberSchema,
   bulkDeleteMembersSchema,
+  addressSuggestionsSchema,
 }
