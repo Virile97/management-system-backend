@@ -639,19 +639,37 @@ async function updateById(id, { winnerMemberIds, ...data }) {
   })
 }
 
+function findManyByIds(ids) {
+  return prisma.soulWin.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, firstName: true, lastName: true },
+  })
+}
+
+// soul_winners rows cascade automatically (onDelete: Cascade on
+// SoulWinWinner.soulWin) — no separate cleanup needed. Deleting a soul_wins
+// row never touches its linked Member (the FK points soul_wins -> members,
+// not the other way), so this is safe even for already-baptized records.
+function deleteManyByIds(ids) {
+  return prisma.soulWin.deleteMany({ where: { id: { in: ids } } })
+}
+
 /**
  * Baptize = create Active member + link soul_wins.memberId in one transaction.
  */
 async function baptize(id, { memberData, baptizedAt }) {
   return prisma.$transaction(async (tx) => {
     const soulWin = await tx.soulWin.findUnique({ where: { id } })
+
     if (!soulWin) return { error: 'NOT_FOUND' }
+
     if (soulWin.memberId) return { error: 'ALREADY_BAPTIZED' }
 
     const activeStatus = await tx.status.findUnique({
       where: { name: 'Active' },
       select: { id: true },
     })
+
     if (!activeStatus) return { error: 'ACTIVE_STATUS_MISSING' }
 
     const member = await tx.member.create({
@@ -759,6 +777,8 @@ module.exports = {
   sumByEvent,
   create,
   updateById,
+  findManyByIds,
+  deleteManyByIds,
   baptize,
   findDefaultLevel,
   findGoal,

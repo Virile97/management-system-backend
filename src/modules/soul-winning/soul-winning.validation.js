@@ -135,6 +135,12 @@ const updateRecordSchema = z.object({
   ),
 })
 
+const bulkDeleteRecordsSchema = z.object({
+  body: z.object({
+    ids: z.array(z.string().uuid('Invalid id format')).min(1, 'ids must contain at least one id'),
+  }),
+})
+
 const baptizeRecordSchema = z.object({
   params: z.object({
     id: z.string().uuid('Invalid id format'),
@@ -176,6 +182,7 @@ module.exports = {
   getGoalSchema,
   createRecordSchema,
   updateRecordSchema,
+  bulkDeleteRecordsSchema,
   baptizeRecordSchema,
   upsertGoalSchema,
 }

@@ -380,6 +380,35 @@ async function updateRecord(id, data) {
   return toRecordResponse(row)
 }
 
+/**
+ * Deleting a soul_wins row never touches its linked Member, baptized or
+ * not — the FK points soul_wins.memberId -> members, not the reverse — so
+ * this is allowed for every record regardless of status. soul_winners join
+ * rows cascade automatically at the DB level.
+ */
+async function deleteRecords(ids, actorId) {
+  const uniqueIds = [...new Set(ids)]
+  const existing = await soulWinningRepository.findManyByIds(uniqueIds)
+
+  if (existing.length === 0) {
+    return { deletedCount: 0, deletedIds: [] }
+  }
+
+  const existingIds = existing.map((r) => r.id)
+  await soulWinningRepository.deleteManyByIds(existingIds)
+
+  const names = existing.map((r) => fullName(r))
+  logActivity({
+    action: 'SOUL_DELETED',
+    message: `Deleted ${existing.length} soul win record${existing.length === 1 ? '' : 's'}`,
+    detail: names.join(', '),
+    actorId,
+    metadata: { soulWinIds: existingIds },
+  }).catch((err) => logger.error({ err }, 'Failed to log SOUL_DELETED activity'))
+
+  return { deletedCount: existing.length, deletedIds: existingIds }
+}
+
 async function baptizeRecord(id, data = {}, actorId, query = {}) {
   const existing = await soulWinningRepository.findRawById(id)
   if (!existing) throw AppError.notFound('Soul win record not found')
@@ -781,6 +810,7 @@ module.exports = {
   getRecordById,
   createRecord,
   updateRecord,
+  deleteRecords,
   baptizeRecord,
   listWinners,
   getTrends,

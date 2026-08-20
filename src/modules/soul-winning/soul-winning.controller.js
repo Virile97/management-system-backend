@@ -27,6 +27,12 @@ const updateRecord = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, record, 'Soul winning record updated')
 })
 
+const bulkDeleteRecords = asyncHandler(async (req, res) => {
+  const result = await soulWinningService.deleteRecords(req.body.ids, req.user.id)
+  const message = `Deleted ${result.deletedCount} record${result.deletedCount === 1 ? '' : 's'}`
+  return ApiResponse.success(res, result, message)
+})
+
 const baptizeRecord = asyncHandler(async (req, res) => {
   const result = await soulWinningService.baptizeRecord(
     req.params.id,
@@ -72,6 +78,7 @@ module.exports = {
   getRecord,
   createRecord,
   updateRecord,
+  bulkDeleteRecords,
   baptizeRecord,
   listWinners,
   getTrends,

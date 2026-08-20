@@ -82,6 +82,7 @@ enum ActivityAction {
   USER_LOGGED_IN
   SOUL_WON
   SOUL_BAPTIZED
+  SOUL_DELETED
 }
 
 model ActivityLog {

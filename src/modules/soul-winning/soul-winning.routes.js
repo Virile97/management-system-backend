@@ -11,6 +11,7 @@ const {
   getGoalSchema,
   createRecordSchema,
   updateRecordSchema,
+  bulkDeleteRecordsSchema,
   baptizeRecordSchema,
   upsertGoalSchema,
 } = require('./soul-winning.validation')
@@ -27,6 +28,11 @@ router.get('/goals', validate(getGoalSchema), soulWinningController.getGoal)
 router.put('/goals', validate(upsertGoalSchema), soulWinningController.upsertGoal)
 
 router.post('/records', validate(createRecordSchema), soulWinningController.createRecord)
+router.post(
+  '/records/bulk-delete',
+  validate(bulkDeleteRecordsSchema),
+  soulWinningController.bulkDeleteRecords,
+)
 router.get('/records/:id', validate(idParamSchema), soulWinningController.getRecord)
 router.patch('/records/:id', validate(updateRecordSchema), soulWinningController.updateRecord)
 router.post(
