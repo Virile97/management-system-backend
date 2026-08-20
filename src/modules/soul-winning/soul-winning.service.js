@@ -421,6 +421,9 @@ async function baptizeRecord(id, data = {}, actorId, query = {}) {
       age: existing.age ?? null,
       isBaptized: true,
       baptizedAt,
+      // Every soul-win convert enters the New Believers Class curriculum
+      // track on baptism, not just an Active member.
+      isNewBeliever: true,
       addedBy: actorId,
       levelId,
       // Level wasn't explicitly chosen at baptism time — flag the new

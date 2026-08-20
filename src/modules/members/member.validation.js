@@ -10,6 +10,10 @@ const listMembersSchema = z.object({
     levelId: z.string().uuid('Invalid levelId').optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
+    // Off by default — the Members page itself still lists deceased members.
+    // Opt-in for pickers (e.g. soul winner search) where a deceased member
+    // should never be a selectable option.
+    excludeDeceased: z.coerce.boolean().optional(),
   }),
 })
 

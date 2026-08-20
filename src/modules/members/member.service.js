@@ -23,11 +23,11 @@ function toMemberResponse(member) {
 
 async function listMembers(query) {
   const { page, limit, skip } = getPagination(query)
-  const { search, status, levelId, from, to } = query
+  const { search, status, levelId, from, to, excludeDeceased } = query
 
   const [members, total] = await Promise.all([
-    memberRepository.findMany({ skip, limit, search, status, levelId, from, to }),
-    memberRepository.count({ search, status, levelId, from, to }),
+    memberRepository.findMany({ skip, limit, search, status, levelId, from, to, excludeDeceased }),
+    memberRepository.count({ search, status, levelId, from, to, excludeDeceased }),
   ])
 
   return {

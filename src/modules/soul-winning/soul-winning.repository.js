@@ -36,26 +36,36 @@ function buildListFilterSql({ search, status, winnerMemberId, event, start, end 
   }
 
   if (search) {
-    const pattern = `%${search}%`
-    conditions.push(Prisma.sql`(
-      sw."firstName" ILIKE ${pattern}
-      OR sw."lastName" ILIKE ${pattern}
-      OR sw."middleName" ILIKE ${pattern}
-      OR sw.contact ILIKE ${pattern}
-      OR sw.location ILIKE ${pattern}
-      OR sw.event ILIKE ${pattern}
-      OR EXISTS (
-        SELECT 1
-        FROM soul_winners sww
-        INNER JOIN members w ON w.id = sww."memberId"
-        WHERE sww."soulWinId" = sw.id
-          AND (
-            w."firstName" ILIKE ${pattern}
-            OR w."lastName" ILIKE ${pattern}
-            OR w."middleName" ILIKE ${pattern}
-          )
-      )
-    )`)
+    // Match each word of the query independently (AND across words, OR
+    // across columns per word) instead of the whole string as one pattern —
+    // otherwise a full-name search like "Gary Pelayo" never matches, since
+    // no single column contains both "Gary" and "Pelayo" together.
+    const words = search.trim().split(/\s+/).filter(Boolean)
+    const wordConditions = words.map((word) => {
+      const pattern = `%${word}%`
+      return Prisma.sql`(
+        sw."firstName" ILIKE ${pattern}
+        OR sw."lastName" ILIKE ${pattern}
+        OR sw."middleName" ILIKE ${pattern}
+        OR sw.contact ILIKE ${pattern}
+        OR sw.location ILIKE ${pattern}
+        OR sw.event ILIKE ${pattern}
+        OR EXISTS (
+          SELECT 1
+          FROM soul_winners sww
+          INNER JOIN members w ON w.id = sww."memberId"
+          WHERE sww."soulWinId" = sw.id
+            AND (
+              w."firstName" ILIKE ${pattern}
+              OR w."lastName" ILIKE ${pattern}
+              OR w."middleName" ILIKE ${pattern}
+            )
+        )
+      )`
+    })
+    if (wordConditions.length) {
+      conditions.push(Prisma.sql`(${Prisma.join(wordConditions, ' AND ')})`)
+    }
   }
 
   if (status === 'New Convert') {
@@ -276,12 +286,21 @@ async function summarizeOverview({ start, end } = {}) {
 async function summarizeWinners({ start, end, search, skip = 0, take = 20 } = {}) {
   const conditions = [buildWonAtFilterSql({ start, end })]
   if (search) {
-    const pattern = `%${search}%`
-    conditions.push(Prisma.sql`(
-      w."firstName" ILIKE ${pattern}
-      OR w."lastName" ILIKE ${pattern}
-      OR w."middleName" ILIKE ${pattern}
-    )`)
+    // Same per-word AND/OR matching as buildListFilterSql — a full-name
+    // search like "Gary Pelayo" needs firstName AND lastName to each match
+    // one word, not the whole string against a single column.
+    const words = search.trim().split(/\s+/).filter(Boolean)
+    const wordConditions = words.map((word) => {
+      const pattern = `%${word}%`
+      return Prisma.sql`(
+        w."firstName" ILIKE ${pattern}
+        OR w."lastName" ILIKE ${pattern}
+        OR w."middleName" ILIKE ${pattern}
+      )`
+    })
+    if (wordConditions.length) {
+      conditions.push(Prisma.sql`(${Prisma.join(wordConditions, ' AND ')})`)
+    }
   }
   const whereSql = Prisma.join(conditions, ' AND ')
 

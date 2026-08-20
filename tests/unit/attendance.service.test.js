@@ -6,6 +6,7 @@ const attendanceService = require('../../src/modules/attendance/attendance.servi
 describe('attendance.service', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    attendanceService._clearRosterCountsCache()
   })
 
   describe('deriveStatus', () => {
@@ -39,6 +40,21 @@ describe('attendance.service', () => {
           'actor-1',
         ),
       ).rejects.toMatchObject({ statusCode: 404 })
+    })
+
+    it('throws conflict when the member is deceased', async () => {
+      vi.spyOn(attendanceRepository, 'memberExists').mockResolvedValue({
+        id: 'm1',
+        status: { name: 'Deceased' },
+      })
+
+      await expect(
+        attendanceService.upsertAttendance(
+          'm1',
+          { date: new Date('2026-08-11'), morningIn: new Date() },
+          'actor-1',
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 })
     })
 
     it('upserts only the times sent and returns derived status', async () => {

@@ -22,14 +22,24 @@ function endOfDay(date) {
   return end
 }
 
-function buildWhere({ search, status, levelId, from, to }) {
+function buildWhere({ search, status, levelId, from, to, excludeDeceased }) {
   const where = {}
+  const andConditions = []
 
   const nameSearch = buildMemberNameSearchWhere(search)
   if (nameSearch) Object.assign(where, nameSearch)
 
   if (status) {
     where.status = { name: status }
+  }
+
+  if (excludeDeceased) {
+    // `status` is a nullable to-one relation — `{ not: X }` alone would
+    // wrongly exclude members with no status set at all, so a null status
+    // must be explicitly allowed through alongside "not Deceased".
+    andConditions.push({
+      OR: [{ statusId: null }, { status: { name: { not: 'Deceased' } } }],
+    })
   }
 
   if (levelId) {
@@ -41,6 +51,10 @@ function buildWhere({ search, status, levelId, from, to }) {
       ...(from ? { gte: from } : {}),
       ...(to ? { lte: endOfDay(to) } : {}),
     }
+  }
+
+  if (andConditions.length) {
+    where.AND = andConditions
   }
 
   return where
@@ -79,9 +93,9 @@ function buildMemberFilterSql({ search, status, from, to }) {
   return Prisma.join(conditions, ' AND ')
 }
 
-function findMany({ skip, limit, search, status, levelId, from, to }) {
+function findMany({ skip, limit, search, status, levelId, from, to, excludeDeceased }) {
   return prisma.member.findMany({
-    where: buildWhere({ search, status, levelId, from, to }),
+    where: buildWhere({ search, status, levelId, from, to, excludeDeceased }),
     skip,
     take: limit,
     orderBy: { createdAt: 'desc' },
@@ -89,8 +103,10 @@ function findMany({ skip, limit, search, status, levelId, from, to }) {
   })
 }
 
-function count({ search, status, levelId, from, to }) {
-  return prisma.member.count({ where: buildWhere({ search, status, levelId, from, to }) })
+function count({ search, status, levelId, from, to, excludeDeceased }) {
+  return prisma.member.count({
+    where: buildWhere({ search, status, levelId, from, to, excludeDeceased }),
+  })
 }
 
 /**

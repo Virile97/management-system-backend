@@ -7,6 +7,11 @@ const {
 } = require('./attendance.mapper')
 const { AppError } = require('../../shared/errors')
 const { getPagination, buildMeta } = require('../../shared/utils')
+const { createMemoCache } = require('../../shared/utils/memo-cache')
+
+const ROSTER_COUNTS_CACHE_TTL_MS = 60_000
+const allMemberCountCache = createMemoCache(ROSTER_COUNTS_CACHE_TTL_MS)
+const levelCountsCache = createMemoCache(ROSTER_COUNTS_CACHE_TTL_MS)
 
 function buildSummary(totalMembers, counts) {
   const fullDay = counts.fullDay ?? 0
@@ -54,9 +59,9 @@ async function listAttendance(query) {
         })
       : attendanceRepository.findMembers({ skip, limit, search, level }),
     attendanceRepository.countMembers({ search, level }),
-    attendanceRepository.countMembers({}),
+    allMemberCountCache(() => attendanceRepository.countMembers({})),
     attendanceRepository.summarizeAttendanceInRange(fromDay, toDay),
-    attendanceRepository.countMembersByLevel(),
+    levelCountsCache(() => attendanceRepository.countMembersByLevel()),
   ])
 
   const pageAttendances = members.length
@@ -92,6 +97,9 @@ async function upsertAttendance(memberId, data, actorId) {
   if (!member) {
     throw AppError.notFound('Member not found')
   }
+  if (member.status?.name === attendanceRepository.DECEASED_STATUS_NAME) {
+    throw AppError.conflict('Cannot record attendance for a deceased member')
+  }
 
   const attendance = await attendanceRepository.upsertByMemberAndDate({
     memberId,
@@ -109,8 +117,14 @@ async function upsertAttendance(memberId, data, actorId) {
   }
 }
 
+function clearRosterCountsCache() {
+  allMemberCountCache.clear()
+  levelCountsCache.clear()
+}
+
 module.exports = {
   listAttendance,
   upsertAttendance,
   deriveStatus,
+  _clearRosterCountsCache: clearRosterCountsCache,
 }

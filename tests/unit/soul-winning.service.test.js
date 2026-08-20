@@ -339,6 +339,147 @@ describe('soul-winning.service', () => {
     })
   })
 
+  describe('updateRecord', () => {
+    it('throws not found when the record does not exist', async () => {
+      vi.spyOn(soulWinningRepository, 'findRawById').mockResolvedValue(null)
+
+      await expect(
+        soulWinningService.updateRecord('sw1', { firstName: 'Jane' }),
+      ).rejects.toMatchObject({ statusCode: 404 })
+    })
+
+    it('rejects a winnerMemberIds replacement containing a non-member', async () => {
+      vi.spyOn(soulWinningRepository, 'findRawById').mockResolvedValue({
+        id: 'sw1',
+        memberId: null,
+        firstName: 'Ama',
+        lastName: 'Kufuor',
+      })
+      vi.spyOn(soulWinningRepository, 'membersExist').mockResolvedValue(false)
+
+      await expect(
+        soulWinningService.updateRecord('sw1', { winnerMemberIds: ['not-a-member'] }),
+      ).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_WINNER' })
+    })
+
+    it('updates a New Convert record and replaces its winner set', async () => {
+      vi.spyOn(soulWinningRepository, 'findRawById').mockResolvedValue({
+        id: 'sw1',
+        memberId: null,
+        firstName: 'Ama',
+        middleName: null,
+        lastName: 'Kufuor',
+      })
+      vi.spyOn(soulWinningRepository, 'membersExist').mockResolvedValue(true)
+      const updateByIdSpy = vi
+        .spyOn(soulWinningRepository, 'updateById')
+        .mockResolvedValue({})
+      const memberUpdateSpy = vi.spyOn(memberRepository, 'updateById')
+      vi.spyOn(soulWinningRepository, 'findById').mockResolvedValue({
+        id: 'sw1',
+        firstName: 'Jane',
+        middleName: 'M',
+        lastName: 'Doe',
+        contact: '09171234567',
+        location: 'St., Brgy., City',
+        age: 25,
+        event: 'Sunday Service',
+        notes: 'Follow-up needed',
+        wonAt: new Date('2026-08-20'),
+        baptizedAt: null,
+        status: 'New Convert',
+        memberId: null,
+        winners: [
+          { id: 'w1', firstName: 'Kofi', lastName: 'Agyeman' },
+          { id: 'w2', firstName: 'Abena', lastName: 'Mensah' },
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      const result = await soulWinningService.updateRecord('sw1', {
+        firstName: 'Jane',
+        middleName: 'M',
+        lastName: 'Doe',
+        contact: '09171234567',
+        location: 'St., Brgy., City',
+        age: 25,
+        event: 'Sunday Service',
+        notes: 'Follow-up needed',
+        wonAt: new Date('2026-08-20'),
+        winnerMemberIds: ['w1', 'w2'],
+      })
+
+      // Not a baptized convert (memberId null) — the linked member row must
+      // never be touched, only the soul_wins record itself.
+      expect(memberUpdateSpy).not.toHaveBeenCalled()
+      expect(updateByIdSpy).toHaveBeenCalledWith(
+        'sw1',
+        expect.objectContaining({
+          firstName: 'Jane',
+          lastName: 'Doe',
+          event: 'Sunday Service',
+          winnerMemberIds: ['w1', 'w2'],
+        }),
+      )
+      expect(result.status).toBe('New Convert')
+      expect(result.convert.firstName).toBe('Jane')
+      expect(result.soulWinners).toHaveLength(2)
+      expect(result.soulWinners.map((w) => w.id)).toEqual(['w1', 'w2'])
+      expect(result.memberId).toBeNull()
+    })
+
+    it('syncs the linked member record when editing an already-baptized convert', async () => {
+      vi.spyOn(soulWinningRepository, 'findRawById').mockResolvedValue({
+        id: 'sw1',
+        memberId: 'm2',
+        firstName: 'Ama',
+        middleName: null,
+        lastName: 'Kufuor',
+      })
+      const memberUpdateSpy = vi
+        .spyOn(memberRepository, 'updateById')
+        .mockResolvedValue({})
+      const updateByIdSpy = vi
+        .spyOn(soulWinningRepository, 'updateById')
+        .mockResolvedValue({})
+      vi.spyOn(soulWinningRepository, 'findById').mockResolvedValue({
+        id: 'sw1',
+        firstName: 'Amanda',
+        middleName: null,
+        lastName: 'Kufuor',
+        contact: null,
+        location: null,
+        age: 30,
+        event: 'Campus Outreach',
+        notes: null,
+        wonAt: new Date('2026-08-04'),
+        baptizedAt: new Date('2026-08-14'),
+        status: 'Active Member',
+        memberId: 'm2',
+        winners: [{ id: 'm1', firstName: 'Kofi', lastName: 'Agyeman' }],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      const result = await soulWinningService.updateRecord('sw1', {
+        firstName: 'Amanda',
+        age: 30,
+      })
+
+      expect(memberUpdateSpy).toHaveBeenCalledWith(
+        'm2',
+        expect.objectContaining({ firstName: 'Amanda', age: 30 }),
+      )
+      expect(updateByIdSpy).toHaveBeenCalledWith(
+        'sw1',
+        expect.objectContaining({ firstName: 'Amanda', age: 30 }),
+      )
+      expect(result.convert.firstName).toBe('Amanda')
+      expect(result.memberId).toBe('m2')
+    })
+  })
+
   describe('baptizeRecord', () => {
     it('rejects when already baptized', async () => {
       vi.spyOn(soulWinningRepository, 'findRawById').mockResolvedValue({
@@ -384,17 +525,19 @@ describe('soul-winning.service', () => {
         id: 'l1',
         name: 'Young People',
       })
-      vi.spyOn(soulWinningRepository, 'baptize').mockResolvedValue({
-        soulWin: { id: 'sw1', memberId: 'm2' },
-        member: {
-          id: 'm2',
-          firstName: 'Ama',
-          lastName: 'Kufuor',
-          isBaptized: true,
-          baptizedAt: new Date('2026-08-14'),
-          status: { id: 's1', name: 'Active' },
-        },
-      })
+      const baptizeSpy = vi
+        .spyOn(soulWinningRepository, 'baptize')
+        .mockResolvedValue({
+          soulWin: { id: 'sw1', memberId: 'm2' },
+          member: {
+            id: 'm2',
+            firstName: 'Ama',
+            lastName: 'Kufuor',
+            isBaptized: true,
+            baptizedAt: new Date('2026-08-14'),
+            status: { id: 's1', name: 'Active' },
+          },
+        })
       vi.spyOn(soulWinningRepository, 'findById').mockResolvedValue({
         id: 'sw1',
         firstName: 'Ama',
@@ -431,6 +574,15 @@ describe('soul-winning.service', () => {
       expect(result.member.status.name).toBe('Active')
       expect(result.snapshot.stats.totalSoulsWon).toBe(5)
       expect(result.snapshot.goal.targetCount).toBe(120)
+      // Baptism enrolls the convert into the New Believers Class track —
+      // required for NBC enrollment (see new-believers.service.js's
+      // createEnrollment gate on student.isNewBeliever).
+      expect(baptizeSpy).toHaveBeenCalledWith(
+        'sw1',
+        expect.objectContaining({
+          memberData: expect.objectContaining({ isNewBeliever: true }),
+        }),
+      )
     })
   })
 })

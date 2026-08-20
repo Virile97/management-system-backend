@@ -191,6 +191,12 @@ model Member {
   @@index([isNewBeliever])
   @@index([levelId])
   @@index([lighthouseGroupId])
+  // firstName/middleName/lastName also have pg_trgm GIN indexes (see
+  // migration 20260820070000_member_name_trgm_search_indexes) to speed up
+  // the ILIKE '%term%' member-search queries in attendance/member modules.
+  // Not expressible as a plain @@index here — Prisma's schema syntax has no
+  // clean way to declare `USING GIN (col gin_trgm_ops)` — so this is
+  // intentional, expected drift from `prisma migrate diff`, not missing.
   @@map("members")
 }
 

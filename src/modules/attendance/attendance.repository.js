@@ -1,6 +1,11 @@
 const { Prisma } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 
+// Deceased members don't attend service — exclude them from every
+// attendance roster query (list, counts, level breakdown) so they can't be
+// marked present/absent or inflate totals.
+const DECEASED_STATUS_NAME = 'Deceased'
+
 const memberAttendanceSelect = {
   id: true,
   firstName: true,
@@ -24,7 +29,15 @@ function buildDateRange(from, to) {
 }
 
 function buildMemberWhere({ search, level }) {
-  const where = {}
+  // `status` is a nullable to-one relation — Prisma's `{ not: X }` on it
+  // requires a related row to exist and not match, which wrongly excludes
+  // members with no status at all. OR in statusId: null explicitly so an
+  // unset status is treated as "not deceased", not filtered out. Kept under
+  // AND (not the top-level `where`) so it composes with — rather than gets
+  // overwritten by — the search OR below, which needs its own OR slot.
+  const where = {
+    AND: [{ OR: [{ statusId: null }, { status: { name: { not: DECEASED_STATUS_NAME } } }] }],
+  }
 
   if (search) {
     where.OR = [
@@ -42,7 +55,15 @@ function buildMemberWhere({ search, level }) {
 }
 
 function buildMemberFilterSql({ search, level }) {
-  const conditions = [Prisma.sql`TRUE`]
+  // NOT EXISTS rather than a join/equality check so members with no status
+  // at all (statusId IS NULL) are correctly kept — same reasoning as the
+  // OR [{ statusId: null }, ...] branch in buildMemberWhere above.
+  const conditions = [
+    Prisma.sql`NOT EXISTS (
+      SELECT 1 FROM statuses s
+      WHERE s.id = m."statusId" AND s.name = ${DECEASED_STATUS_NAME}
+    )`,
+  ]
 
   if (search) {
     const pattern = `%${search}%`
@@ -234,6 +255,9 @@ async function summarizeAttendanceInRange(from, to) {
 }
 
 async function countMembersByLevel() {
+  // Exclusion lives in the JOIN condition, not a WHERE, so a level with zero
+  // non-deceased members still appears with count 0 instead of the LEFT
+  // JOIN's whole row disappearing.
   const rows = await prisma.$queryRaw`
     SELECT
       l.id,
@@ -241,6 +265,10 @@ async function countMembersByLevel() {
       COUNT(m.id)::int AS count
     FROM levels l
     LEFT JOIN members m ON m."levelId" = l.id
+      AND NOT EXISTS (
+        SELECT 1 FROM statuses s
+        WHERE s.id = m."statusId" AND s.name = ${DECEASED_STATUS_NAME}
+      )
     GROUP BY l.id, l.name
     ORDER BY l.name ASC
   `
@@ -285,7 +313,10 @@ function upsertByMemberAndDate({
 }
 
 function memberExists(id) {
-  return prisma.member.findUnique({ where: { id }, select: { id: true } })
+  return prisma.member.findUnique({
+    where: { id },
+    select: { id: true, status: { select: { name: true } } },
+  })
 }
 
 module.exports = {
@@ -298,4 +329,5 @@ module.exports = {
   upsertByMemberAndDate,
   memberExists,
   toDateOnly,
+  DECEASED_STATUS_NAME,
 }
